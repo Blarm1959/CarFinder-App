@@ -1348,6 +1348,7 @@ def render_selected_vehicle(row: dict) -> None:
 **Dealer group:** {safe_text(row.get("dealer_group_name"))}  
 **Nearest branch:** {safe_text(row.get("nearest_branch_name"))}  
 **Estimated registration date:** {safe_text(row.get("estimated_registration_date_display"))}  
+**First registered (from dealer site):** {safe_text(row.get("first_registered")) or "not given"}  
 **Interest:** {interest_display(row) or "Not reviewed"}{(" — " + safe_text(row.get("interest_reason"))) if safe_text(row.get("interest_reason")) else ""}
 """
     )
@@ -1762,6 +1763,30 @@ else:  # pragma: no cover - very old Streamlit
         st.session_state.show_settings_inline = True
 
 
+NARROW_SCREEN_CSS = """
+<style>
+.carfinder-narrow-warning { display: none; }
+@media (max-width: 900px) {
+  .carfinder-narrow-warning {
+    display: block; margin: 0 0 0.75rem 0; padding: 0.6rem 0.9rem; border-radius: 0.5rem;
+    background: #FFF4E5; color: #7A4B00; border: 1px solid #F0C27B; font-size: 0.95rem;
+  }
+}
+</style>
+<div class="carfinder-narrow-warning">
+  CarFinder is designed for a laptop or a tablet in landscape. Some columns may not fit on this screen.
+</div>
+"""
+
+
+def render_narrow_screen_warning() -> None:
+    st.markdown(NARROW_SCREEN_CSS, unsafe_allow_html=True)
+
+
+def searchable_makes_text() -> str:
+    return "Searchable makes: " + " · ".join(available_makes())
+
+
 def log_out() -> None:
     for key in list(st.session_state.keys()):
         del st.session_state[key]
@@ -1770,9 +1795,9 @@ def log_out() -> None:
 def render_login() -> None:
     """Login screen, or first-run admin setup when nobody exists yet."""
     version = VERSION_INFO.get("version")
+    render_narrow_screen_warning()
     st.markdown("<h1 style='margin-bottom:0'>🚗 CarFinder</h1>", unsafe_allow_html=True)
-    if version:
-        st.caption(f"v{version}")
+    st.caption((f"v{version} · " if version else "") + searchable_makes_text())
     _, middle, _ = st.columns([1, 1.2, 1])
     with middle:
         if not has_users():
@@ -1813,6 +1838,7 @@ def render_login() -> None:
 
 def render_header() -> None:
     version = VERSION_INFO.get("version")
+    render_narrow_screen_warning()
     c1, c2 = st.columns([8, 1.4])
     with c1:
         badge = (
@@ -1827,6 +1853,7 @@ def render_header() -> None:
             st.caption(f"{who} · searching: " + " · ".join(f"{c['name']}" for c in cars))
         else:
             st.caption(f"{who} · no car searches yet. Open ⚙ Settings → My cars to add up to 10.")
+        st.caption(searchable_makes_text() + " — more makes are being added.")
     with c2:
         st.write("")
         if st.button("⚙ Settings", use_container_width=True, help="Your cars, postcode, password" + (", household and people" if is_admin() else "")):

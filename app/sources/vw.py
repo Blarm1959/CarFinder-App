@@ -20,7 +20,14 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.db import now_iso
-from app.sources import SearchResult, body_and_seats_match, classify_body_type, standardise
+from app.sources import (
+    SearchResult,
+    body_and_seats_match,
+    classify_body_type,
+    fuel_matches,
+    standardise,
+    transmission_matches,
+)
 
 SOURCE_KEY = "vw"
 SOURCE_NAME = "Volkswagen Approved Used"
@@ -520,32 +527,6 @@ def page_url(search_url: str, page_number: int) -> str:
 
 def _squash(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
-
-
-def fuel_matches(wanted: str, fuel_text: str) -> bool:
-    fuel = (fuel_text or "").lower()
-    if not fuel or wanted in ("", "Any"):
-        return True
-    if wanted == "Petrol":
-        return "petrol" in fuel or "super" in fuel
-    if wanted == "Diesel":
-        return "diesel" in fuel
-    if wanted == "Hybrid":
-        return "hybrid" in fuel or ("electric" in fuel and ("petrol" in fuel or "diesel" in fuel))
-    if wanted == "Electric":
-        return "electric" in fuel and "petrol" not in fuel and "diesel" not in fuel
-    return True
-
-
-def transmission_matches(wanted: str, transmission_text: str) -> bool:
-    transmission = (transmission_text or "").lower()
-    if not transmission or wanted in ("", "Any"):
-        return True
-    if wanted == "Manual":
-        return "manual" in transmission
-    if wanted == "Automatic":
-        return "manual" not in transmission
-    return True
 
 
 def vw_body_and_seats(obj: dict[str, Any]) -> tuple[str | None, int | None]:

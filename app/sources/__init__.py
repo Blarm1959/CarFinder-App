@@ -28,6 +28,7 @@ Standard listing (one dict per car; unknown values are None):
     url              absolute link to the advert
     photo_status     "photos" | "awaiting" | "unknown"
     photo_count, photo_reason
+    first_registered "YYYY-MM-DD" when the site gives the real date (e.g. Skoda)
     title            short human-readable description
     raw_text         JSON of the source record (for diagnostics)
     source           module key, e.g. "vw"
@@ -36,6 +37,8 @@ Standard listing (one dict per car; unknown values are None):
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any
@@ -43,7 +46,7 @@ from typing import Any
 STANDARD_FIELDS = (
     "registration", "make", "model", "trim", "year", "colour", "fuel", "transmission", "body_type", "seats",
     "mileage", "price", "previous_price", "dealer", "location", "distance_miles", "url",
-    "photo_status", "photo_count", "photo_reason", "title", "raw_text", "source",
+    "photo_status", "photo_count", "photo_reason", "first_registered", "title", "raw_text", "source",
     "status", "last_seen",
 )
 
@@ -108,10 +111,36 @@ def body_and_seats_match(car: dict[str, Any], body_type: str | None, seats: Any)
     return True
 
 
-def _load_modules() -> dict[str, ModuleType]:
-    from app.sources import vw
+def fuel_matches(wanted: str, fuel_text: str) -> bool:
+    fuel = (fuel_text or "").lower()
+    if not fuel or wanted in ("", "Any"):
+        return True
+    if wanted == "Petrol":
+        return "petrol" in fuel or "super" in fuel
+    if wanted == "Diesel":
+        return "diesel" in fuel
+    if wanted == "Hybrid":
+        return "hybrid" in fuel or ("electric" in fuel and ("petrol" in fuel or "diesel" in fuel))
+    if wanted == "Electric":
+        return "electric" in fuel and "petrol" not in fuel and "diesel" not in fuel
+    return True
 
-    return {vw.SOURCE_KEY: vw}
+
+def transmission_matches(wanted: str, transmission_text: str) -> bool:
+    transmission = (transmission_text or "").lower()
+    if not transmission or wanted in ("", "Any"):
+        return True
+    if wanted == "Manual":
+        return "manual" in transmission
+    if wanted == "Automatic":
+        return "manual" not in transmission
+    return True
+
+
+def _load_modules() -> dict[str, ModuleType]:
+    from app.sources import skoda, vw
+
+    return {vw.SOURCE_KEY: vw, skoda.SOURCE_KEY: skoda}
 
 
 _MODULES: dict[str, ModuleType] | None = None
@@ -133,9 +162,29 @@ def available_makes() -> list[str]:
     return makes
 
 
+def _plain(text: str | None) -> str:
+    """Lower-case with accents removed, so "Škoda" matches "Skoda"."""
+    return unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().strip().lower()
+
+
 def source_for_make(make: str | None) -> ModuleType | None:
-    wanted = (make or "").strip().lower()
+    wanted = _plain(make)
     for module in modules().values():
-        if any(wanted == m.lower() for m in module.MAKES):
+        if any(wanted == _plain(m) for m in module.MAKES):
             return module
+    return None
+
+
+UK_REG = re.compile(r"^[A-Z]{2}\d{2}[A-Z]{3}$")
+NI_REG = re.compile(r"^[A-Z]{1,3}\d{1,4}$")
+
+
+def normalise_plate(plate: str | None) -> str | None:
+    """Standard UK plates as "AB12 CDE"; Northern Ireland plates as "MXZ 8376"."""
+    compact = re.sub(r"[^A-Z0-9]", "", (plate or "").upper())
+    if UK_REG.match(compact):
+        return f"{compact[:4]} {compact[4:]}"
+    if NI_REG.match(compact):
+        letters = re.match(r"^[A-Z]+", compact).group(0)
+        return f"{letters} {compact[len(letters):]}"
     return None

@@ -74,6 +74,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             source TEXT,
             body_type TEXT,
             seats INTEGER,
+            first_registered TEXT,
 
             notes TEXT,
             first_seen TEXT,
@@ -260,6 +261,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         "source": "TEXT",
         "body_type": "TEXT",
         "seats": "INTEGER",
+        "first_registered": "TEXT",
     }
     for column_name, column_type in vehicle_migrations.items():
         if column_name not in vehicle_columns:
@@ -487,8 +489,8 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
                 year, colour, trim, mileage, price_current, dealer, location,
                 distance_miles, photo_status, url, interest_status, interest_date,
                 interest_reason, reachability_status, car_search_id, car_search_name,
-                make, model, fuel, transmission, source, body_type, seats, notes, first_seen, last_seen, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                make, model, fuel, transmission, source, body_type, seats, first_registered, notes, first_seen, last_seen, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 reg,
@@ -519,6 +521,7 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
                 data.get("source") or source,
                 data.get("body_type"),
                 data.get("seats"),
+                data.get("first_registered"),
                 data.get("notes"),
                 data.get("first_seen") or t,
                 data.get("last_seen") or t,
@@ -570,6 +573,7 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
                 source = COALESCE(?, source),
                 body_type = COALESCE(?, body_type),
                 seats = COALESCE(?, seats),
+                first_registered = COALESCE(?, first_registered),
                 notes = CASE
                     WHEN ? IS NULL OR ? = '' THEN notes
                     WHEN notes IS NULL OR notes = '' THEN ?
@@ -604,6 +608,7 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
                 data.get("source"),
                 data.get("body_type"),
                 data.get("seats"),
+                data.get("first_registered"),
                 data.get("notes"),
                 data.get("notes"),
                 data.get("notes"),
