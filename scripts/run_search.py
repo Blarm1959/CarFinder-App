@@ -24,13 +24,19 @@ from app.db import (  # noqa: E402
     connect,
     create_scrape_run,
     finish_scrape_run,
-    get_vehicles,
     init_db,
     mark_missing_not_seen,
+    upsert_search_link,
     upsert_vehicle,
 )
-from app.settings import enabled_car_searches, load_settings  # noqa: E402
+from app.settings import (  # noqa: E402
+    enabled_car_searches,
+    load_settings,
+    person_settings,
+    search_settings_for,
+)
 from app.sources import source_for_make  # noqa: E402
+from app.users import list_users  # noqa: E402
 
 CACHE_DIR = REPO_ROOT / "data" / "cache"
 
@@ -66,10 +72,14 @@ def record_change(diagnostics: dict[str, Any], pending: list[dict[str, Any]], ch
     pending.append(change)
 
 
-def save_rows(conn, run_id: int, car: dict[str, Any], rows: list[dict[str, Any]], diagnostics: dict[str, Any]) -> None:
+def save_rows(conn, run_id: int, car: dict[str, Any], rows: list[dict[str, Any]], diagnostics: dict[str, Any],
+              radius: int = 30) -> None:
     """Write one search's standard rows to the database."""
     site = car.get("make") or "search"
     for row in rows:
+        # Sold/rejected are set by hand on the shared car row; a search
+        # result must not overwrite them.
+        row.pop("status", None)
         row["car_search_id"] = car["id"]
         row["car_search_name"] = car["name"]
         add_scrape_result(conn, run_id, row)
@@ -77,8 +87,13 @@ def save_rows(conn, run_id: int, car: dict[str, Any], rows: list[dict[str, Any]]
         reg = row["registration"]
 
         existing = conn.execute(
-            "SELECT status, mileage, price_current, photo_status FROM vehicles WHERE registration = ?",
-            (reg,),
+            """
+            SELECT v.mileage, v.price_current, v.photo_status,
+                   (SELECT vs.status FROM vehicle_searches vs
+                    WHERE vs.car_search_id = ? AND vs.registration = v.registration) AS status
+            FROM vehicles v WHERE v.registration = ?
+            """,
+            (car["id"], reg),
         ).fetchone()
         if existing is None:
             diagnostics["cars_new"] += 1
@@ -119,6 +134,7 @@ def save_rows(conn, run_id: int, car: dict[str, Any], rows: list[dict[str, Any]]
         # The vehicle must exist before related history rows are inserted
         # (price_history and vehicle_change_log have foreign keys).
         upsert_vehicle(conn, row, source="search")
+        upsert_search_link(conn, car, row, radius)
 
         for change in pending:
             add_vehicle_change(conn, run_id, change["registration"], change["change_type"],
@@ -135,11 +151,13 @@ def run_search() -> dict[str, Any]:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     settings = load_settings()
-    cars = enabled_car_searches(settings)
+    # Only run searches that belong to someone who still has a login.
+    people = {u["username"] for u in list_users()}
+    cars = [car for car in enabled_car_searches(settings) if car.get("owner") in people]
 
     conn = connect()
     init_db(conn)
-    summary_url = "; ".join(f"{c['name']} ({c['make']})" for c in cars) or "No car searches enabled"
+    summary_url = "; ".join(f"{c['owner']}: {c['name']} ({c['make']})" for c in cars) or "No car searches enabled"
     run_id = create_scrape_run(conn, summary_url)
     diagnostics = new_diagnostics()
     total_rows = 0
@@ -147,7 +165,9 @@ def run_search() -> dict[str, Any]:
 
     try:
         for car in cars:
-            search_info: dict[str, Any] = {"search": car["name"], "make": car["make"], "status": "complete"}
+            search_info: dict[str, Any] = {
+                "search": car["name"], "owner": car.get("owner"), "make": car["make"], "status": "complete",
+            }
             diagnostics["searches"].append(search_info)
             module = source_for_make(car.get("make"))
             if module is None:
@@ -156,7 +176,7 @@ def run_search() -> dict[str, Any]:
                 continue
 
             try:
-                result = module.search(car, settings, diagnostics)
+                result = module.search(car, search_settings_for(settings, car.get("owner") or ""), diagnostics)
             except Exception as exc:  # one failing site must not stop the others
                 search_info.update(status="failed", message=str(exc))
                 failures.append(f"{car['name']}: {exc}")
@@ -185,7 +205,8 @@ def run_search() -> dict[str, Any]:
             )
 
             db_started = time.perf_counter()
-            save_rows(conn, run_id, car, result.rows, diagnostics)
+            radius = int(person_settings(settings, car.get("owner") or "").get("local_radius_miles") or 30)
+            save_rows(conn, run_id, car, result.rows, diagnostics, radius)
             diagnostics["db_write_seconds"] = round(diagnostics["db_write_seconds"] + time.perf_counter() - db_started, 3)
 
             # Only mark this search's cars missing when the search clearly
@@ -209,8 +230,8 @@ def run_search() -> dict[str, Any]:
             )
 
         reachability_counts = {"LOCAL": 0, "TRANSFERABLE": 0, "REMOTE": 0}
-        for vehicle in get_vehicles(conn):
-            status = str(vehicle.get("reachability_status") or "REMOTE").upper()
+        for link in conn.execute("SELECT reachability_status FROM vehicle_searches WHERE status = 'active'"):
+            status = str(link["reachability_status"] or "REMOTE").upper()
             reachability_counts[status if status in reachability_counts else "REMOTE"] += 1
         diagnostics["reachability_counts"] = reachability_counts
 

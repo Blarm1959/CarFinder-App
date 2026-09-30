@@ -72,6 +72,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             fuel TEXT,
             transmission TEXT,
             source TEXT,
+            body_type TEXT,
+            seats INTEGER,
 
             notes TEXT,
             first_seen TEXT,
@@ -184,6 +186,54 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
+    # v2.0.1: which car search (and so which person) found each car, with the
+    # distance and dealer route from that person's postcode, plus each
+    # person's own review of the car.
+    had_links = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vehicle_searches'"
+    ).fetchone() is not None
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS vehicle_searches (
+            car_search_id TEXT NOT NULL,
+            registration TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            car_search_name TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            distance_miles INTEGER,
+            reachability_status TEXT NOT NULL DEFAULT 'REMOTE',
+            dealer_group_id INTEGER,
+            dealer_group_name TEXT,
+            nearest_branch_name TEXT,
+            nearest_branch_distance_miles INTEGER,
+            reachability_reason TEXT,
+            first_seen TEXT,
+            last_seen TEXT,
+            PRIMARY KEY (car_search_id, registration),
+            FOREIGN KEY (registration) REFERENCES vehicles(registration) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_vehicle_searches_owner
+        ON vehicle_searches (owner, status);
+
+        CREATE TABLE IF NOT EXISTS vehicle_reviews (
+            owner TEXT NOT NULL,
+            registration TEXT NOT NULL,
+            interest_status TEXT,
+            interest_date TEXT,
+            interest_reason TEXT,
+            notes TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (owner, registration),
+            FOREIGN KEY (registration) REFERENCES vehicles(registration) ON DELETE CASCADE
+        );
+        """
+    )
+    if not had_links:
+        # v2.0.0 marked missing on the shared car row; that now lives on the
+        # per-search link, which the next search rebuilds.
+        conn.execute("UPDATE vehicles SET status = 'active' WHERE status = 'missing'")
+
     # Lightweight migrations for existing databases.
     vehicle_columns = {
         row["name"]
@@ -208,6 +258,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         "fuel": "TEXT",
         "transmission": "TEXT",
         "source": "TEXT",
+        "body_type": "TEXT",
+        "seats": "INTEGER",
     }
     for column_name, column_type in vehicle_migrations.items():
         if column_name not in vehicle_columns:
@@ -240,7 +292,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE scrape_runs ADD COLUMN {column_name} {column_type}")
 
     seed_dealer_reachability(conn)
-    refresh_all_vehicle_reachability(conn)
+    refresh_search_reachability(conn)
 
     conn.commit()
 
@@ -334,10 +386,83 @@ def update_vehicle_reachability(conn: sqlite3.Connection, registration: str) -> 
 
 
 def refresh_all_vehicle_reachability(conn: sqlite3.Connection) -> int:
-    rows = conn.execute("SELECT registration FROM vehicles").fetchall()
+    """Backwards-compatible name: reachability now lives on each search link."""
+    return refresh_search_reachability(conn)
+
+
+def _owner_radius(owner: str, cache: dict[str, int]) -> int:
+    if owner not in cache:
+        from app.settings import load_settings, person_settings
+
+        cache[owner] = int(person_settings(load_settings(), owner).get("local_radius_miles") or 30)
+    return cache[owner]
+
+
+def _apply_link_reachability(conn: sqlite3.Connection, car_search_id: str, registration: str, owner: str,
+                             distance: Any, dealer: Any, radius: int) -> None:
+    result = calculate_reachability(conn, {"distance_miles": distance, "dealer": dealer}, radius)
+    conn.execute(
+        """
+        UPDATE vehicle_searches
+        SET reachability_status = ?, dealer_group_id = ?, dealer_group_name = ?,
+            nearest_branch_name = ?, nearest_branch_distance_miles = ?, reachability_reason = ?
+        WHERE car_search_id = ? AND registration = ?
+        """,
+        (
+            normalise_reachability_status(result.status), result.dealer_group_id, result.dealer_group_name,
+            result.nearest_branch_name, result.nearest_branch_distance_miles, result.reason,
+            car_search_id, registration,
+        ),
+    )
+
+
+def refresh_search_reachability(conn: sqlite3.Connection) -> int:
+    """Recalculate L/T/R for every search link using each owner's radius."""
+    rows = conn.execute(
+        """
+        SELECT vs.car_search_id, vs.registration, vs.owner, vs.distance_miles, v.dealer
+        FROM vehicle_searches vs JOIN vehicles v ON v.registration = vs.registration
+        """
+    ).fetchall()
+    cache: dict[str, int] = {}
     for row in rows:
-        update_vehicle_reachability(conn, row["registration"])
+        _apply_link_reachability(conn, row["car_search_id"], row["registration"], row["owner"],
+                                 row["distance_miles"], row["dealer"], _owner_radius(row["owner"], cache))
     return len(rows)
+
+
+def upsert_search_link(conn: sqlite3.Connection, car: dict[str, Any], row: dict[str, Any], radius: int) -> bool:
+    """Record that ``car`` (a car search) found this car. Returns True if the link is new."""
+    reg = normalise_reg(row.get("registration") or "")
+    if not reg:
+        return False
+    t = row.get("last_seen") or now_iso()
+    existing = conn.execute(
+        "SELECT status FROM vehicle_searches WHERE car_search_id = ? AND registration = ?",
+        (car["id"], reg),
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            """
+            INSERT INTO vehicle_searches (car_search_id, registration, owner, car_search_name, status,
+                                          distance_miles, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+            """,
+            (car["id"], reg, car.get("owner") or "", car.get("name"), row.get("distance_miles"), t, t),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE vehicle_searches
+            SET status = 'active', owner = ?, car_search_name = ?,
+                distance_miles = COALESCE(?, distance_miles), last_seen = ?
+            WHERE car_search_id = ? AND registration = ?
+            """,
+            (car.get("owner") or "", car.get("name"), row.get("distance_miles"), t, car["id"], reg),
+        )
+    _apply_link_reachability(conn, car["id"], reg, car.get("owner") or "", row.get("distance_miles"),
+                             row.get("dealer"), radius)
+    return existing is None
 
 
 def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str = "manual") -> None:
@@ -362,8 +487,8 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
                 year, colour, trim, mileage, price_current, dealer, location,
                 distance_miles, photo_status, url, interest_status, interest_date,
                 interest_reason, reachability_status, car_search_id, car_search_name,
-                make, model, fuel, transmission, source, notes, first_seen, last_seen, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                make, model, fuel, transmission, source, body_type, seats, notes, first_seen, last_seen, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 reg,
@@ -392,6 +517,8 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
                 data.get("fuel"),
                 data.get("transmission"),
                 data.get("source") or source,
+                data.get("body_type"),
+                data.get("seats"),
                 data.get("notes"),
                 data.get("first_seen") or t,
                 data.get("last_seen") or t,
@@ -441,6 +568,8 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
                 fuel = COALESCE(?, fuel),
                 transmission = COALESCE(?, transmission),
                 source = COALESCE(?, source),
+                body_type = COALESCE(?, body_type),
+                seats = COALESCE(?, seats),
                 notes = CASE
                     WHEN ? IS NULL OR ? = '' THEN notes
                     WHEN notes IS NULL OR notes = '' THEN ?
@@ -473,6 +602,8 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
                 data.get("fuel"),
                 data.get("transmission"),
                 data.get("source"),
+                data.get("body_type"),
+                data.get("seats"),
                 data.get("notes"),
                 data.get("notes"),
                 data.get("notes"),
@@ -487,8 +618,6 @@ def upsert_vehicle(conn: sqlite3.Connection, data: dict[str, Any], source: str =
     price = data.get("price_current") or data.get("price")
     if price is not None:
         add_price_observation(conn, reg, int(price), source=source, observed_at=data.get("last_seen") or t)
-
-    update_vehicle_reachability(conn, reg)
 
     conn.commit()
 
@@ -707,47 +836,47 @@ def get_vehicle_changes(conn: sqlite3.Connection, run_id: int | None = None, lim
 def mark_missing_not_seen(
     conn: sqlite3.Connection,
     seen_regs: Iterable[str],
-    car_search_id: str | None = None,
+    car_search_id: str,
 ) -> list[str]:
-    """Mark active cars as missing when a search no longer returns them.
+    """Mark cars missing from one car search when it no longer returns them.
 
-    With several car searches, only cars belonging to the search that has just
-    run are checked, so one search never marks another search's cars missing.
+    Only that search's links are touched, so one search (or one person) never
+    marks another search's cars missing.
     """
     seen = {normalise_reg(r) for r in seen_regs if normalise_reg(r)}
-    if car_search_id is None:
-        active_rows = conn.execute("SELECT registration FROM vehicles WHERE status = 'active'").fetchall()
-    else:
-        active_rows = conn.execute(
-            "SELECT registration FROM vehicles WHERE status = 'active' AND car_search_id = ?",
-            (car_search_id,),
-        ).fetchall()
+    rows = conn.execute(
+        "SELECT registration FROM vehicle_searches WHERE status = 'active' AND car_search_id = ?",
+        (car_search_id,),
+    ).fetchall()
     marked_missing: list[str] = []
-
-    for row in active_rows:
+    for row in rows:
         reg = row["registration"]
         if reg not in seen:
             conn.execute(
-                "UPDATE vehicles SET status = 'missing', updated_at = ? WHERE registration = ?",
-                (now_iso(), reg),
+                "UPDATE vehicle_searches SET status = 'missing' WHERE car_search_id = ? AND registration = ?",
+                (car_search_id, reg),
             )
             marked_missing.append(reg)
-
     conn.commit()
     return marked_missing
 
 
-def delete_missing_vehicles(conn: sqlite3.Connection) -> int:
-    """Delete all vehicles currently marked as missing.
+def delete_missing_vehicles(conn: sqlite3.Connection, owner: str | None = None) -> int:
+    """Remove missing cars from a person's list (or everyone's when owner is None).
 
-    Missing cars are normally old search results that have disappeared
-    from the source website. Price history is removed with the
-    vehicle because of the ON DELETE CASCADE foreign key.
+    Cars that are no longer in anybody's list are then deleted completely,
+    together with their price history.
     """
-    cur = conn.execute("DELETE FROM vehicles WHERE status = 'missing'")
+    if owner is None:
+        cur = conn.execute("DELETE FROM vehicle_searches WHERE status = 'missing'")
+    else:
+        cur = conn.execute("DELETE FROM vehicle_searches WHERE status = 'missing' AND owner = ?", (owner,))
+    removed = int(cur.rowcount or 0)
+    conn.execute(
+        "DELETE FROM vehicles WHERE registration NOT IN (SELECT registration FROM vehicle_searches)"
+    )
     conn.commit()
-    return int(cur.rowcount or 0)
-
+    return removed
 
 
 def get_scrape_runs(conn: sqlite3.Connection, limit: int = 10) -> list[dict[str, Any]]:
@@ -801,32 +930,68 @@ def get_dealer_branches(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
-def get_vehicles(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def get_vehicles(conn: sqlite3.Connection, owner: str | None = None) -> list[dict[str, Any]]:
+    """Cars for one person (their searches only) or, with no owner, every car.
+
+    The per-person values (status, distance, dealer route, interest, notes)
+    replace the shared ones on each returned row.  A car found by two of the
+    same person's searches is returned once, preferring an active link.
+    """
+    price_cols = """
+        (SELECT ph.price FROM price_history ph WHERE ph.registration = v.registration ORDER BY ph.observed_at DESC, ph.id DESC LIMIT 1) AS latest_price,
+        (SELECT ph.price FROM price_history ph WHERE ph.registration = v.registration ORDER BY ph.observed_at DESC, ph.id DESC LIMIT 1 OFFSET 1) AS previous_price,
+        (SELECT COUNT(*) FROM price_history ph WHERE ph.registration = v.registration) AS price_history_count
+    """
+    if owner is None:
+        rows = conn.execute(f"SELECT v.*, {price_cols} FROM vehicles v").fetchall()
+        return [dict(r) for r in rows]
+
     rows = conn.execute(
-        """
-        SELECT v.*,
-               (SELECT ph.price FROM price_history ph WHERE ph.registration = v.registration ORDER BY ph.observed_at DESC, ph.id DESC LIMIT 1) AS latest_price,
-               (SELECT ph.price FROM price_history ph WHERE ph.registration = v.registration ORDER BY ph.observed_at DESC, ph.id DESC LIMIT 1 OFFSET 1) AS previous_price,
-               (SELECT COUNT(*) FROM price_history ph WHERE ph.registration = v.registration) AS price_history_count
-        FROM vehicles v
-        ORDER BY
-            CASE v.status WHEN 'active' THEN 0 WHEN 'missing' THEN 1 WHEN 'sold' THEN 2 ELSE 3 END,
-            CASE v.reachability_status WHEN 'LOCAL' THEN 0 WHEN 'TRANSFERABLE' THEN 1 ELSE 2 END,
-            CASE
-                WHEN v.sensor_status = 'front_rear' THEN 0
-                WHEN v.sensor_status = 'single' THEN 1
-                WHEN v.sensor_status = 'unknown' AND v.photo_status = 'photos' THEN 2
-                WHEN v.sensor_status = 'unknown' AND v.photo_status = 'awaiting' THEN 3
-                WHEN v.sensor_status = 'unknown' THEN 4
-                WHEN v.sensor_status = 'none' THEN 5
-                ELSE 6
-            END,
-            v.distance_miles ASC,
-            v.price_current ASC,
-            v.mileage ASC
-        """
+        f"""
+        SELECT v.*, {price_cols},
+               vs.car_search_id AS link_car_search_id,
+               vs.car_search_name AS link_car_search_name,
+               vs.owner AS link_owner,
+               vs.status AS link_status,
+               vs.distance_miles AS link_distance_miles,
+               vs.reachability_status AS link_reachability_status,
+               vs.dealer_group_id AS link_dealer_group_id,
+               vs.dealer_group_name AS link_dealer_group_name,
+               vs.nearest_branch_name AS link_nearest_branch_name,
+               vs.nearest_branch_distance_miles AS link_nearest_branch_distance_miles,
+               vs.reachability_reason AS link_reachability_reason,
+               r.interest_status AS review_interest_status,
+               r.interest_date AS review_interest_date,
+               r.interest_reason AS review_interest_reason,
+               r.notes AS review_notes
+        FROM vehicle_searches vs
+        JOIN vehicles v ON v.registration = vs.registration
+        LEFT JOIN vehicle_reviews r ON r.owner = vs.owner AND r.registration = vs.registration
+        WHERE vs.owner = ?
+        ORDER BY CASE vs.status WHEN 'active' THEN 0 ELSE 1 END, vs.last_seen DESC
+        """,
+        (owner,),
     ).fetchall()
-    return [dict(r) for r in rows]
+
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        item = dict(row)
+        if item["registration"] in seen:
+            continue
+        seen.add(item["registration"])
+        manual = item.get("status")
+        item["status"] = manual if manual in {"sold", "rejected"} else item["link_status"]
+        for key in ("car_search_id", "car_search_name", "distance_miles", "reachability_status",
+                    "dealer_group_id", "dealer_group_name", "nearest_branch_name",
+                    "nearest_branch_distance_miles", "reachability_reason"):
+            item[key] = item.pop(f"link_{key}")
+        for key in ("interest_status", "interest_date", "interest_reason", "notes"):
+            item[key] = item.pop(f"review_{key}")
+        item.pop("link_owner", None)
+        item.pop("link_status", None)
+        out.append(item)
+    return out
 
 
 def get_price_history(conn: sqlite3.Connection, registration: str) -> list[dict[str, Any]]:
@@ -853,11 +1018,21 @@ def update_vehicle_manual(
     interest_status: str | None = None,
     interest_date: str | None = None,
     interest_reason: str | None = None,
+    owner: str | None = None,
 ) -> None:
+    """Save the popup edits.
+
+    Sensors, photos checked and sold/rejected status are facts about the car,
+    shared by everyone.  Interest, review date, reason and notes belong to the
+    person (``owner``) who is looking at it.
+    """
     reg = normalise_reg(registration)
     ss = normalise_sensor_status(sensor_status)
     sd = normalise_sensor_detail(sensor_detail, ss)
     st = normalise_status(status)
+    if st == "missing":
+        # Missing is worked out per search; keep the shared row active.
+        st = "active"
     interest = normalise_interest_status(interest_status)
     clean_interest_date = (interest_date or "").strip() or None
     clean_interest_reason = (interest_reason or "").strip() or None
@@ -869,10 +1044,23 @@ def update_vehicle_manual(
     conn.execute(
         """
         UPDATE vehicles
-        SET status = ?, sensor_status = ?, sensor_detail = ?, checked = ?, notes = ?,
-            interest_status = ?, interest_date = ?, interest_reason = ?, updated_at = ?
+        SET status = ?, sensor_status = ?, sensor_detail = ?, checked = ?, updated_at = ?
         WHERE registration = ?
         """,
-        (st, ss, sd, int(bool(checked)), notes, interest, clean_interest_date, clean_interest_reason, now_iso(), reg),
+        (st, ss, sd, int(bool(checked)), now_iso(), reg),
     )
+    if owner:
+        conn.execute(
+            """
+            INSERT INTO vehicle_reviews (owner, registration, interest_status, interest_date, interest_reason, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(owner, registration) DO UPDATE SET
+                interest_status = excluded.interest_status,
+                interest_date = excluded.interest_date,
+                interest_reason = excluded.interest_reason,
+                notes = excluded.notes,
+                updated_at = excluded.updated_at
+            """,
+            (owner, reg, interest, clean_interest_date, clean_interest_reason, notes, now_iso()),
+        )
     conn.commit()

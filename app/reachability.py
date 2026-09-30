@@ -44,7 +44,6 @@ def load_reachability_config() -> dict[str, Any]:
 
     settings = load_settings()
     return {
-        "home_postcode": settings.get("home_postcode") or "",
         "local_radius_miles": int_or_none(settings.get("local_radius_miles")) or 30,
         "dealer_groups": settings.get("dealer_groups") or [],
     }
@@ -67,7 +66,6 @@ def seed_dealer_reachability(conn: sqlite3.Connection, config: dict[str, Any] | 
     """
     config = config or load_reachability_config()
     settings = {
-        "home_postcode": str(config.get("home_postcode") or ""),
         "local_radius_miles": str(int_or_none(config.get("local_radius_miles")) or 30),
     }
     for key, value in settings.items():
@@ -196,8 +194,17 @@ def nearest_active_branch(conn: sqlite3.Connection, dealer_group_id: int, radius
     ).fetchone()
 
 
-def calculate_reachability(conn: sqlite3.Connection, vehicle: dict[str, Any] | sqlite3.Row) -> ReachabilityResult:
-    radius = local_radius_miles(conn)
+def calculate_reachability(
+    conn: sqlite3.Connection,
+    vehicle: dict[str, Any] | sqlite3.Row,
+    radius_miles: int | None = None,
+) -> ReachabilityResult:
+    """Classify a car as LOCAL / TRANSFERABLE / REMOTE.
+
+    ``radius_miles`` is the viewing person's local radius; ``vehicle`` needs
+    ``distance_miles`` (from that person's postcode) and ``dealer``.
+    """
+    radius = radius_miles if radius_miles is not None else local_radius_miles(conn)
     distance = int_or_none(vehicle["distance_miles"] if "distance_miles" in vehicle.keys() else None)
     if distance is not None and distance <= radius:
         return ReachabilityResult(

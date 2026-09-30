@@ -44,21 +44,51 @@ from app.db import (
 )
 from app.reachability import seed_dealer_reachability
 from app.settings import (
+    BODY_TYPE_OPTIONS,
     FUEL_OPTIONS,
     MAX_CAR_SEARCHES,
     TRANSMISSION_OPTIONS,
     USER_SETTINGS_PATH,
+    claim_legacy_settings,
     enabled_car_searches,
     int_or_none,
     load_settings,
     load_version,
+    person_settings,
     save_settings,
+    set_person_settings,
     text_or_blank,
 )
 from app.sources import available_makes, modules, source_for_make
+from app.users import (
+    USERS_PATH,
+    authenticate,
+    create_user,
+    delete_user,
+    has_users,
+    list_users,
+    set_password,
+    update_user,
+)
 
 SETTINGS = load_settings()
 VERSION_INFO = load_version()
+
+
+def current_user() -> dict:
+    return st.session_state.get("user") or {}
+
+
+def current_username() -> str:
+    return str(current_user().get("username") or "")
+
+
+def is_admin() -> bool:
+    return current_user().get("role") == "admin"
+
+
+def my_settings() -> dict:
+    return person_settings(SETTINGS, current_username())
 
 
 def load_mileage_colour_settings() -> dict[str, object]:
@@ -536,7 +566,7 @@ def checked_colour_values() -> list[str]:
 
 
 def selected_car_search(df: pd.DataFrame) -> str:
-    names = [text_or_blank(car.get("name")) for car in SETTINGS.get("car_searches") or []]
+    names = [text_or_blank(car.get("name")) for car in my_settings().get("car_searches") or []]
     for name in df.get("car_label", pd.Series(dtype=str)).dropna().astype(str):
         if name and name not in names:
             names.append(name)
@@ -1206,10 +1236,13 @@ def render_scraper_diagnostics(conn) -> None:
 
 def render_dealer_reachability_diagnostics(conn) -> None:
     with st.expander("Dealer reachability setup", expanded=False):
-        settings = get_dealer_reachability_settings(conn)
-        radius = settings.get("local_radius_miles", "30")
-        postcode = settings.get("home_postcode") or "not set"
-        st.caption(f"Home postcode: {postcode}. Local radius: {radius} miles. Change dealer groups, aliases and branches in ⚙ Settings → Location & dealers.")
+        mine = my_settings()
+        radius = mine.get("local_radius_miles") or 30
+        postcode = mine.get("home_postcode") or "not set"
+        st.caption(
+            f"Your postcode: {postcode}. Your local radius: {radius} miles. "
+            "Your postcode and radius are in ⚙ Settings → My cars; dealer groups are in ⚙ Settings → Household (admin)."
+        )
 
         groups = get_dealer_groups(conn)
         branches = get_dealer_branches(conn)
@@ -1304,6 +1337,7 @@ def render_selected_vehicle(row: dict) -> None:
         f"""
 **Car:** {safe_text(row.get("car_label"))} — {safe_text(row.get("make"))} {safe_text(row.get("model"))} {safe_text(row.get("trim"))}  
 **Fuel / gearbox:** {safe_text(row.get("fuel"))} / {safe_text(row.get("transmission"))}  
+**Body / seats:** {safe_text(row.get("body_type")) or "not stated"} / {whole_number(row.get("seats")) or "not stated"}  
 **Year:** {safe_text(row.get("year"))}  
 **Colour:** {safe_text(row.get("colour"))}  
 **Dealer:** {safe_text(row.get("dealer"))}  
@@ -1433,6 +1467,7 @@ def render_selected_vehicle(row: dict) -> None:
                     db_interest,
                     db_interest_date,
                     interest_reason,
+                    owner=current_username(),
                 )
                 st.success("Saved.")
                 st.rerun()
@@ -1486,7 +1521,7 @@ def settings_dataframe(rows: list[dict], columns: list[str]) -> pd.DataFrame:
 
 
 CAR_EDITOR_COLUMNS = [
-    "id", "enabled", "name", "make", "model", "trim", "fuel", "transmission",
+    "id", "enabled", "name", "make", "model", "trim", "body_type", "seats_min", "fuel", "transmission",
     "price_min", "price_max", "mileage_max", "year_min", "power_min", "search_url",
 ]
 DEALER_EDITOR_COLUMNS = ["name", "aliases", "branch_name", "branch_town", "branch_distance_miles", "notes"]
@@ -1495,123 +1530,212 @@ DEALER_EDITOR_COLUMNS = ["name", "aliases", "branch_name", "branch_town", "branc
 def editor_records(df: pd.DataFrame) -> list[dict]:
     records = []
     for record in df.to_dict("records"):
-        if any(text_or_blank(v) for k, v in record.items() if k not in {"enabled", "id"}):
+        if any(text_or_blank(v) for k, v in record.items() if k not in {"enabled", "id", "owner"}):
             records.append(record)
     return records
+
+
+def render_my_cars_tab(person: dict, makes: list[str]):
+    st.caption(
+        f"Your car searches (up to {MAX_CAR_SEARCHES}). Only you see the cars they find. Each one is searched "
+        f"with the module for its make (available now: {', '.join(makes)}). Leave a field blank for no limit. "
+        "Model is optional, e.g. any Volkswagen estate with 7 seats."
+    )
+    c1, c2 = st.columns(2)
+    postcode = c1.text_input("Your home postcode", value=person.get("home_postcode") or "", help="Distances are measured from here.")
+    local_radius = c2.number_input(
+        "Your local radius (miles)", min_value=0, max_value=200, value=int(person.get("local_radius_miles") or 30), step=5,
+        help="Cars within this distance count as Local (L).",
+    )
+    cars_df = settings_dataframe(person.get("car_searches") or [], CAR_EDITOR_COLUMNS)
+    edited_cars = st.data_editor(
+        cars_df,
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        key="settings_cars_editor",
+        column_order=[c for c in CAR_EDITOR_COLUMNS if c != "id"],
+        column_config={
+            "enabled": st.column_config.CheckboxColumn("On", default=True, help="Include this car when searching."),
+            "name": st.column_config.TextColumn("Name", help="Short name shown in the car column, e.g. Octavia Estate.", max_chars=20),
+            "make": st.column_config.SelectboxColumn("Make", options=makes, default=makes[0] if makes else None, required=True),
+            "model": st.column_config.TextColumn("Model", help="e.g. Golf, Octavia, Touran. Blank = any model."),
+            "trim": st.column_config.TextColumn("Trim", help="Exact trim name, e.g. Life or Style. Blank = any."),
+            "body_type": st.column_config.SelectboxColumn("Body", options=BODY_TYPE_OPTIONS, default="Any"),
+            "seats_min": st.column_config.NumberColumn("Min seats", min_value=2, max_value=9, step=1, format="%d"),
+            "fuel": st.column_config.SelectboxColumn("Fuel", options=FUEL_OPTIONS, default="Any"),
+            "transmission": st.column_config.SelectboxColumn("Gearbox", options=TRANSMISSION_OPTIONS, default="Any"),
+            "price_min": st.column_config.NumberColumn("Min £", min_value=0, step=500, format="%d"),
+            "price_max": st.column_config.NumberColumn("Max £", min_value=0, step=500, format="%d"),
+            "mileage_max": st.column_config.NumberColumn("Max miles", min_value=0, step=5000, format="%d"),
+            "year_min": st.column_config.NumberColumn("From year", min_value=1990, max_value=2100, step=1, format="%d"),
+            "power_min": st.column_config.NumberColumn("Min PS", min_value=0, step=5, format="%d"),
+            "search_url": st.column_config.TextColumn("Search URL (optional)", help="Overrides the fields above for the search itself."),
+        },
+    )
+    car_rows = editor_records(edited_cars)
+    if len(car_rows) > MAX_CAR_SEARCHES:
+        st.error(f"Only {MAX_CAR_SEARCHES} car searches are allowed. Remove {len(car_rows) - MAX_CAR_SEARCHES}.")
+    return {"home_postcode": postcode, "local_radius_miles": local_radius, "car_searches": car_rows}
+
+
+def render_household_tab(settings: dict) -> dict:
+    st.caption("Household settings apply to everyone. Only admins can change them.")
+    c1, c2 = st.columns(2)
+    default_radius = c1.number_input(
+        "Default local radius (miles)", min_value=0, max_value=200, value=int(settings["local_radius_miles"]), step=5,
+        help="Used for anyone who hasn't set their own.",
+    )
+    search_radius = c2.number_input("Search radius (miles)", min_value=10, max_value=900, value=int(settings["search_radius_miles"]), step=10)
+    st.markdown("**Dealer groups**")
+    st.caption(
+        "A car from a dealer matching a group's name or alias is Transferable (T) when the group has a branch "
+        "within the person's local radius. Aliases are comma-separated."
+    )
+    groups = [dict(g, aliases=", ".join(g.get("aliases") or [])) for g in settings["dealer_groups"]]
+    edited_groups = st.data_editor(
+        settings_dataframe(groups, DEALER_EDITOR_COLUMNS),
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        key="settings_dealers_editor",
+        column_config={
+            "name": st.column_config.TextColumn("Group", required=True),
+            "aliases": st.column_config.TextColumn("Aliases"),
+            "branch_name": st.column_config.TextColumn("Nearby branch"),
+            "branch_town": st.column_config.TextColumn("Town"),
+            "branch_distance_miles": st.column_config.NumberColumn("Miles", min_value=0, step=1, format="%d"),
+            "notes": st.column_config.TextColumn("Notes"),
+        },
+    )
+    st.markdown("**Mileage colours**")
+    st.caption("The registration is coloured by miles per year so low-use cars stand out.")
+    mpy = settings["mileage_per_year"]
+    c1, c2, c3 = st.columns(3)
+    green_max = c1.number_input("Green below (mi/yr)", min_value=1000, max_value=50000, value=int(mpy["green_max"]), step=500)
+    yellow_max = c2.number_input("Orange below (mi/yr)", min_value=1000, max_value=50000, value=int(mpy["yellow_max"]), step=500)
+    orange_max = c3.number_input("Red below (mi/yr)", min_value=1000, max_value=50000, value=int(mpy["orange_max"]), step=500)
+    c4, c5, c6, c7 = st.columns(4)
+    colours = {
+        "green_colour": c4.color_picker("Low", value=str(mpy["green_colour"])),
+        "normal_colour": c5.color_picker("Normal", value=str(mpy["normal_colour"])),
+        "high_colour": c6.color_picker("High", value=str(mpy["high_colour"])),
+        "very_high_colour": c7.color_picker("Very high", value=str(mpy["very_high_colour"])),
+    }
+    st.caption("CarFinder Score weights are fixed: Interest 25 · Reachability 30 · Mileage/year 25 · Price 15 · Age 5.")
+    return {
+        "local_radius_miles": default_radius,
+        "search_radius_miles": search_radius,
+        "dealer_groups": editor_records(edited_groups),
+        "mileage_per_year": {"green_max": green_max, "yellow_max": yellow_max, "orange_max": orange_max, **colours},
+    }
+
+
+def render_users_tab() -> None:
+    me = current_username()
+    with st.form("change_own_password", clear_on_submit=True):
+        st.markdown("**Change your password**")
+        current = st.text_input("Current password", type="password")
+        new1 = st.text_input("New password", type="password")
+        new2 = st.text_input("New password again", type="password")
+        if st.form_submit_button("Change password"):
+            if not authenticate(me, current):
+                st.error("Current password is wrong.")
+            elif new1 != new2:
+                st.error("The new passwords don't match.")
+            else:
+                try:
+                    set_password(me, new1)
+                    st.success("Password changed.")
+                except ValueError as exc:
+                    st.error(str(exc))
+
+    if not is_admin():
+        return
+
+    st.divider()
+    st.markdown("**People**")
+    users = list_users()
+    st.dataframe(
+        pd.DataFrame([{"Username": u["username"], "Name": u["display_name"], "Role": u["role"]} for u in users]),
+        hide_index=True, use_container_width=True,
+    )
+
+    with st.form("add_user", clear_on_submit=True):
+        st.markdown("**Add a person**")
+        c1, c2, c3 = st.columns(3)
+        username = c1.text_input("Username", help="Used to log in, e.g. sarah.")
+        display_name = c2.text_input("Name")
+        role = c3.selectbox("Role", ["user", "admin"], help="Admins can change household settings and people.")
+        password = st.text_input("Starting password", type="password", help="They can change it in Settings → Users.")
+        if st.form_submit_button("Add person"):
+            try:
+                created = create_user(username, password, display_name, role)
+                st.success(f"Added {created['display_name']} ({created['username']}).")
+            except ValueError as exc:
+                st.error(str(exc))
+
+    others = [u["username"] for u in users if u["username"] != me]
+    if others:
+        with st.form("manage_user", clear_on_submit=True):
+            st.markdown("**Reset password or remove someone**")
+            c1, c2 = st.columns(2)
+            who = c1.selectbox("Person", others)
+            new_password = c2.text_input("New password", type="password")
+            b1, b2, b3 = st.columns(3)
+            do_reset = b1.form_submit_button("Reset password")
+            do_admin = b2.form_submit_button("Toggle admin")
+            do_delete = b3.form_submit_button("Remove person")
+            try:
+                if do_reset:
+                    set_password(who, new_password)
+                    st.success(f"Password reset for {who}.")
+                elif do_admin:
+                    target = next(u for u in users if u["username"] == who)
+                    update_user(who, role="user" if target["role"] == "admin" else "admin")
+                    st.success(f"Changed {who}'s role.")
+                elif do_delete:
+                    delete_user(who)
+                    st.success(f"Removed {who}. Their car searches stay in settings until you delete them.")
+            except ValueError as exc:
+                st.error(str(exc))
 
 
 def render_settings_body() -> None:
     """Settings screen, in the style of the Quarto/Lipfty settings dialogs."""
     settings = load_settings()
     makes = available_makes()
-    tab_cars, tab_location, tab_colours, tab_about = st.tabs(["Cars", "Location & dealers", "Mileage colours", "About"])
+    me = current_username()
+    names = ["My cars"] + (["Household"] if is_admin() else []) + ["Users", "About"]
+    tabs = dict(zip(names, st.tabs(names)))
 
-    with tab_cars:
-        st.caption(
-            f"Up to {MAX_CAR_SEARCHES} car searches. Each one is searched with the module for its make "
-            f"(available now: {', '.join(makes)}). Leave a field blank for no limit. "
-            "Paste a search URL from the maker's website to use filters CarFinder doesn't offer."
-        )
-        cars_df = settings_dataframe(settings["car_searches"], CAR_EDITOR_COLUMNS)
-        edited_cars = st.data_editor(
-            cars_df,
-            num_rows="dynamic",
-            hide_index=True,
-            use_container_width=True,
-            key="settings_cars_editor",
-            column_order=[c for c in CAR_EDITOR_COLUMNS if c != "id"],
-            column_config={
-                "enabled": st.column_config.CheckboxColumn("On", default=True, help="Include this car when searching."),
-                "name": st.column_config.TextColumn("Name", help="Short name shown in the car column, e.g. Polo Life.", max_chars=20),
-                "make": st.column_config.SelectboxColumn("Make", options=makes, default=makes[0] if makes else None, required=True),
-                "model": st.column_config.TextColumn("Model", help="e.g. Polo, Golf, T-Roc."),
-                "trim": st.column_config.TextColumn("Trim", help="Exact trim name, e.g. Life or Style. Blank = any."),
-                "fuel": st.column_config.SelectboxColumn("Fuel", options=FUEL_OPTIONS, default="Any"),
-                "transmission": st.column_config.SelectboxColumn("Gearbox", options=TRANSMISSION_OPTIONS, default="Any"),
-                "price_min": st.column_config.NumberColumn("Min £", min_value=0, step=500, format="%d"),
-                "price_max": st.column_config.NumberColumn("Max £", min_value=0, step=500, format="%d"),
-                "mileage_max": st.column_config.NumberColumn("Max miles", min_value=0, step=5000, format="%d"),
-                "year_min": st.column_config.NumberColumn("From year", min_value=1990, max_value=2100, step=1, format="%d"),
-                "power_min": st.column_config.NumberColumn("Min PS", min_value=0, step=5, format="%d"),
-                "search_url": st.column_config.TextColumn("Search URL (optional)", help="Overrides the fields above for the search itself."),
-            },
-        )
-        car_rows = editor_records(edited_cars)
-        if len(car_rows) > MAX_CAR_SEARCHES:
-            st.error(f"Only {MAX_CAR_SEARCHES} car searches are allowed. Remove {len(car_rows) - MAX_CAR_SEARCHES}.")
-
-    with tab_location:
-        c1, c2, c3 = st.columns(3)
-        postcode = c1.text_input("Home postcode", value=settings["home_postcode"], help="Used for search distances.")
-        local_radius = c2.number_input("Local radius (miles)", min_value=0, max_value=200, value=int(settings["local_radius_miles"]), step=5)
-        search_radius = c3.number_input("Search radius (miles)", min_value=10, max_value=900, value=int(settings["search_radius_miles"]), step=10)
-        st.markdown("**Dealer groups**")
-        st.caption(
-            "A car from a dealer matching a group's name or alias is Transferable (T) when the group has a branch "
-            "within the local radius. Aliases are comma-separated."
-        )
-        groups = [dict(g, aliases=", ".join(g.get("aliases") or [])) for g in settings["dealer_groups"]]
-        edited_groups = st.data_editor(
-            settings_dataframe(groups, DEALER_EDITOR_COLUMNS),
-            num_rows="dynamic",
-            hide_index=True,
-            use_container_width=True,
-            key="settings_dealers_editor",
-            column_config={
-                "name": st.column_config.TextColumn("Group", required=True),
-                "aliases": st.column_config.TextColumn("Aliases"),
-                "branch_name": st.column_config.TextColumn("Nearby branch"),
-                "branch_town": st.column_config.TextColumn("Town"),
-                "branch_distance_miles": st.column_config.NumberColumn("Miles", min_value=0, step=1, format="%d"),
-                "notes": st.column_config.TextColumn("Notes"),
-            },
-        )
-
-    with tab_colours:
-        st.caption("The registration is coloured by miles per year so low-use cars stand out.")
-        mpy = settings["mileage_per_year"]
-        c1, c2, c3 = st.columns(3)
-        green_max = c1.number_input("Green below (mi/yr)", min_value=1000, max_value=50000, value=int(mpy["green_max"]), step=500)
-        yellow_max = c2.number_input("Orange below (mi/yr)", min_value=1000, max_value=50000, value=int(mpy["yellow_max"]), step=500)
-        orange_max = c3.number_input("Red below (mi/yr)", min_value=1000, max_value=50000, value=int(mpy["orange_max"]), step=500)
-        c4, c5, c6, c7 = st.columns(4)
-        green_colour = c4.color_picker("Low", value=str(mpy["green_colour"]))
-        normal_colour = c5.color_picker("Normal", value=str(mpy["normal_colour"]))
-        high_colour = c6.color_picker("High", value=str(mpy["high_colour"]))
-        very_high_colour = c7.color_picker("Very high", value=str(mpy["very_high_colour"]))
-        st.caption("CarFinder Score weights are fixed: Interest 25 · Reachability 30 · Mileage/year 25 · Price 15 · Age 5.")
-
-    with tab_about:
+    with tabs["My cars"]:
+        person = render_my_cars_tab(person_settings(settings, me), makes)
+    household = None
+    if "Household" in tabs:
+        with tabs["Household"]:
+            household = render_household_tab(settings)
+    with tabs["Users"]:
+        render_users_tab()
+    with tabs["About"]:
         version = VERSION_INFO.get("version") or "development"
         built = VERSION_INFO.get("built")
         st.markdown(f"**CarFinder** v{version}" + (f" · built {built}" if built else ""))
+        st.markdown(f"Signed in as **{current_user().get('display_name')}** ({me}, {current_user().get('role')})")
         st.markdown("**Search modules**")
         for module in modules().values():
             st.write(f"- {module.SOURCE_NAME}: {', '.join(module.MAKES)}")
         st.caption(f"Database: `{DB_PATH}`")
-        st.caption(f"Your settings: `{USER_SETTINGS_PATH}` (private, not published)")
+        st.caption(f"Settings: `{USER_SETTINGS_PATH}` · People: `{USERS_PATH}` (private, not published)")
 
     st.divider()
     b1, b2, b3 = st.columns([1, 1, 2])
     save = b1.button("Save", type="primary", use_container_width=True)
     save_and_run = b2.button("Save & run search", use_container_width=True)
     if save or save_and_run:
-        new_settings = {
-            "home_postcode": postcode,
-            "local_radius_miles": local_radius,
-            "search_radius_miles": search_radius,
-            "dealer_groups": editor_records(edited_groups),
-            "mileage_per_year": {
-                "green_max": green_max,
-                "yellow_max": yellow_max,
-                "orange_max": orange_max,
-                "green_colour": green_colour,
-                "normal_colour": normal_colour,
-                "high_colour": high_colour,
-                "very_high_colour": very_high_colour,
-            },
-            "car_searches": car_rows,
-        }
+        new_settings = set_person_settings(settings, me, person)
+        if household:
+            new_settings.update(household)
         try:
             save_settings(new_settings)
         except ValueError as exc:
@@ -1638,6 +1762,55 @@ else:  # pragma: no cover - very old Streamlit
         st.session_state.show_settings_inline = True
 
 
+def log_out() -> None:
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+
+
+def render_login() -> None:
+    """Login screen, or first-run admin setup when nobody exists yet."""
+    version = VERSION_INFO.get("version")
+    st.markdown("<h1 style='margin-bottom:0'>🚗 CarFinder</h1>", unsafe_allow_html=True)
+    if version:
+        st.caption(f"v{version}")
+    _, middle, _ = st.columns([1, 1.2, 1])
+    with middle:
+        if not has_users():
+            st.subheader("Create the admin account")
+            st.caption("First run: this account manages household settings and the other people's logins.")
+            with st.form("first_admin"):
+                username = st.text_input("Username", help="e.g. bill")
+                display_name = st.text_input("Name")
+                password = st.text_input("Password", type="password")
+                password2 = st.text_input("Password again", type="password")
+                if st.form_submit_button("Create account", type="primary"):
+                    if password != password2:
+                        st.error("The passwords don't match.")
+                    else:
+                        try:
+                            user = create_user(username, password, display_name, role="admin")
+                        except ValueError as exc:
+                            st.error(str(exc))
+                        else:
+                            # The v2.0.0 postcode and car searches become this person's.
+                            save_settings(claim_legacy_settings(load_settings(), user["username"]))
+                            st.session_state.user = user
+                            st.rerun()
+            return
+
+        st.subheader("Log in")
+        with st.form("login"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            if st.form_submit_button("Log in", type="primary"):
+                user = authenticate(username, password)
+                if user:
+                    st.session_state.user = user
+                    st.rerun()
+                else:
+                    st.error("Username or password is wrong.")
+
+
 def render_header() -> None:
     version = VERSION_INFO.get("version")
     c1, c2 = st.columns([8, 1.4])
@@ -1648,22 +1821,29 @@ def render_header() -> None:
             if version else ""
         )
         st.markdown(f"<h1 style='margin-bottom:0'>🚗 CarFinder{badge}</h1>", unsafe_allow_html=True)
-        cars = enabled_car_searches(SETTINGS)
+        cars = enabled_car_searches(SETTINGS, current_username())
+        who = html.escape(str(current_user().get("display_name") or ""))
         if cars:
-            st.caption("Searching: " + " · ".join(f"{c['name']}" for c in cars))
+            st.caption(f"{who} · searching: " + " · ".join(f"{c['name']}" for c in cars))
         else:
-            st.caption("No car searches yet. Open ⚙ Settings to add up to 10 cars.")
+            st.caption(f"{who} · no car searches yet. Open ⚙ Settings → My cars to add up to 10.")
     with c2:
         st.write("")
-        if st.button("⚙ Settings", use_container_width=True, help="Cars, location, dealer groups and colours"):
+        if st.button("⚙ Settings", use_container_width=True, help="Your cars, postcode, password" + (", household and people" if is_admin() else "")):
             clear_selected_vehicle()
             open_settings_dialog()
+        if st.button("Log out", use_container_width=True):
+            log_out()
+            st.rerun()
     if st.session_state.pop("show_settings_inline", False):
         with st.expander("⚙ Settings", expanded=True):
             render_settings_body()
 
 
 def main():
+    if not current_user():
+        render_login()
+        return
     render_header()
 
     initialise_browser_session()
@@ -1675,7 +1855,8 @@ def main():
 
     with st.sidebar:
         st.header("Actions")
-        if st.button("Run search", type="primary", use_container_width=True, disabled=not enabled_car_searches(SETTINGS)):
+        if st.button("Run search", type="primary", use_container_width=True, disabled=not enabled_car_searches(SETTINGS),
+                     help="Runs everyone's car searches."):
             ok, msg = run_script(SEARCH_SCRIPT)
             if ok:
                 st.success(msg)
@@ -1693,7 +1874,7 @@ def main():
         st.markdown("### Database cleanup")
         st.caption("Use this after changing searches or once missing cars have clearly disappeared from the source website.")
         if st.button("Clear all missing cars", use_container_width=True):
-            deleted = delete_missing_vehicles(conn)
+            deleted = delete_missing_vehicles(conn, current_username())
             clear_selected_vehicle()
             if deleted:
                 st.success(f"Removed {deleted} missing car{'s' if deleted != 1 else ''} from the database.")
@@ -1716,11 +1897,11 @@ def main():
     render_scraper_diagnostics(conn)
     render_dealer_reachability_diagnostics(conn)
 
-    rows = get_vehicles(conn)
+    rows = get_vehicles(conn, current_username())
     conn.close()
 
     if not rows:
-        st.info("No cars yet. Add a car search in ⚙ Settings, then use 'Run search'.")
+        st.info("No cars yet. Add a car search in ⚙ Settings → My cars, then use 'Run search'.")
         return
 
     df = make_dataframe(rows)

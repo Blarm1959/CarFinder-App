@@ -1,5 +1,4 @@
 {
-  "home_postcode": "",
   "local_radius_miles": 30,
   "search_radius_miles": 900,
   "dealer_groups": [
@@ -35,5 +34,5 @@
     "high_colour": "#C0392B",
     "very_high_colour": "#8E44AD"
   },
-  "car_searches": []
+  "people": {}
 }

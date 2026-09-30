@@ -20,7 +20,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.db import now_iso
-from app.sources import SearchResult, standardise
+from app.sources import SearchResult, body_and_seats_match, classify_body_type, standardise
 
 SOURCE_KEY = "vw"
 SOURCE_NAME = "Volkswagen Approved Used"
@@ -30,6 +30,8 @@ SITE_ROOT = "https://usedcars.volkswagen.co.uk"
 SEARCH_BASE_URL = f"{SITE_ROOT}/en/vehicle_search/all-brands/all-models"
 DEFAULT_POOLS_CSV = "47-12532-217084"
 MAX_PAGES = 5
+# A search with no model (e.g. "any VW estate") covers far more stock.
+MAX_PAGES_ANY_MODEL = 12
 
 REG_PATTERN = re.compile(r"^[A-Z]{2}\d{2}[A-Z]{3}$")
 RAW_REG_PATTERN = re.compile(r"[A-Z]{2}\s?\d{2}\s?[A-Z]{3}", re.I)
@@ -546,6 +548,32 @@ def transmission_matches(wanted: str, transmission_text: str) -> bool:
     return True
 
 
+def vw_body_and_seats(obj: dict[str, Any]) -> tuple[str | None, int | None]:
+    """Body type and seat count from a VW record.
+
+    VW's field names for these are not confirmed yet, so look for any field
+    whose name mentions BODY (but not colour) or SEAT, and fall back to the
+    model name (e.g. "Golf Estate", "Tiguan Allspace").
+    """
+    body_texts: list[str] = []
+    seats: int | None = None
+    for key, value in obj.items():
+        name = str(key).upper()
+        if "BODY" in name and "COLOR" not in name and "COLOUR" not in name and isinstance(value, (str, list)):
+            body_texts.append(" ".join(str(v) for v in value) if isinstance(value, list) else value)
+        elif "SEAT" in name and seats is None:
+            number = int_or_none(value)
+            if number is not None and 1 < number < 10:
+                seats = number
+    body = classify_body_type(*body_texts) or classify_body_type(
+        obj.get("MODEL_TEXT_STR"), obj.get("SUB_MODEL_TEXT_STR"), obj.get("MODEL_TYPE_STR")
+    )
+    model_text = " ".join(str(obj.get(k) or "") for k in ("MODEL_TEXT_STR", "SUB_MODEL_TEXT_STR")).lower()
+    if seats is None and "allspace" in model_text:
+        seats = 7
+    return body, seats
+
+
 def is_wanted_vehicle(obj: dict[str, Any], car: dict[str, Any]) -> bool:
     reg = normalise_reg(obj.get("LICENSE_NUMBER_STR"))
     if not reg:
@@ -589,6 +617,9 @@ def is_wanted_vehicle(obj: dict[str, Any], car: dict[str, Any]) -> bool:
     if power is not None and car.get("power_min") is not None and power < int(car["power_min"]):
         return False
     if year is not None and car.get("year_min") is not None and year < int(car["year_min"]):
+        return False
+    body_type, seats = vw_body_and_seats(obj)
+    if not body_and_seats_match(car, body_type, seats):
         return False
 
     return True
@@ -671,6 +702,7 @@ def object_to_row(obj: dict[str, Any], info_map: dict[str, dict[str, Any]], car:
     model = str_or_none(obj.get("MODEL_TEXT_STR")) or str_or_none(car.get("model"))
     fuel = str_or_none(obj.get("FUEL_TYPE_LST") or obj.get("FUEL_TYPE_COMBINED_LST"))
     transmission = str_or_none(obj.get("TRANSMISSION_LST"))
+    body_type, seats = vw_body_and_seats(obj)
 
     title = f"{year or ''} Volkswagen {model or ''} {obj.get('SUB_MODEL_TEXT_STR') or trim or ''} {reg}"
     title = " ".join(title.split())
@@ -684,6 +716,8 @@ def object_to_row(obj: dict[str, Any], info_map: dict[str, dict[str, Any]], car:
         "colour": colour,
         "fuel": fuel,
         "transmission": transmission,
+        "body_type": body_type,
+        "seats": seats,
         "mileage": mileage,
         "price": price,
         "previous_price": previous_price,
@@ -740,7 +774,8 @@ def search(car: dict[str, Any], settings: dict[str, Any], timings: dict[str, Any
     text_parts: list[str] = []
     page_timings: list[dict[str, Any]] = []
 
-    for page_number in range(1, MAX_PAGES + 1):
+    max_pages = MAX_PAGES if (car.get("model") or car.get("search_url")) else MAX_PAGES_ANY_MODEL
+    for page_number in range(1, max_pages + 1):
         url = page_url(search_url, page_number)
 
         page_started = time.perf_counter()

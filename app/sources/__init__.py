@@ -17,6 +17,8 @@ Standard listing (one dict per car; unknown values are None):
     year             model/listing year (int)
     colour
     fuel, transmission
+    body_type        "Hatchback" | "Estate" | "Saloon" | "SUV" | "MPV" | None
+    seats            int
     mileage          int
     price            int, current advertised price
     previous_price   int, if the site shows a reduced-from price
@@ -39,7 +41,7 @@ from types import ModuleType
 from typing import Any
 
 STANDARD_FIELDS = (
-    "registration", "make", "model", "trim", "year", "colour", "fuel", "transmission",
+    "registration", "make", "model", "trim", "year", "colour", "fuel", "transmission", "body_type", "seats",
     "mileage", "price", "previous_price", "dealer", "location", "distance_miles", "url",
     "photo_status", "photo_count", "photo_reason", "title", "raw_text", "source",
     "status", "last_seen",
@@ -65,6 +67,45 @@ def standardise(row: dict[str, Any]) -> dict[str, Any]:
     out["status"] = out["status"] or "active"
     out["photo_status"] = out["photo_status"] or "unknown"
     return out
+
+
+# Words that identify each body type, in model names or body-style fields.
+BODY_TYPE_WORDS: dict[str, tuple[str, ...]] = {
+    "Estate": ("estate", "tourer", "touring", "variant", "sportswagon", "sports wagon", "avant", "combi",
+               "shooting brake", "wagon", " sw ", "alltrack"),
+    "Saloon": ("saloon", "sedan", "limousine", "fastback"),
+    "SUV": ("suv", "4x4", "crossover", "off-road", "offroad"),
+    "MPV": ("mpv", "people carrier", "multi purpose", "multi-purpose"),
+    "Hatchback": ("hatch",),
+}
+
+
+def classify_body_type(*texts: Any) -> str | None:
+    """Best-effort body type from any descriptive text (body field, model name)."""
+    text = " " + " ".join(str(t) for t in texts if t).lower() + " "
+    for body, words in BODY_TYPE_WORDS.items():
+        if any(word in text for word in words):
+            return body
+    return None
+
+
+def body_and_seats_match(car: dict[str, Any], body_type: str | None, seats: Any) -> bool:
+    """Apply a car search's body type / minimum seats.
+
+    Unknown values never reject a car, so listings that don't state their
+    body style or seats are kept for you to check.
+    """
+    wanted = str(car.get("body_type") or "Any")
+    if wanted != "Any" and body_type and body_type != wanted:
+        return False
+    seats_min = car.get("seats_min")
+    try:
+        seat_count = int(seats) if seats not in (None, "") else None
+    except (TypeError, ValueError):
+        seat_count = None
+    if seats_min and seat_count is not None and seat_count < int(seats_min):
+        return False
+    return True
 
 
 def _load_modules() -> dict[str, ModuleType]:
