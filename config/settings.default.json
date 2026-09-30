@@ -1,0 +1,39 @@
+{
+  "home_postcode": "",
+  "local_radius_miles": 30,
+  "search_radius_miles": 900,
+  "dealer_groups": [
+    {
+      "name": "Vertu",
+      "aliases": [
+        "Vertu",
+        "Bristol Street Motors",
+        "Macklin Motors"
+      ],
+      "notes": "Nationwide group; usually transfers cars to a nearby branch.",
+      "branch_name": "Nearby branch",
+      "branch_town": "",
+      "branch_distance_miles": 30
+    },
+    {
+      "name": "Lookers",
+      "aliases": [
+        "Lookers"
+      ],
+      "notes": "Nationwide group; treat as potentially transferable.",
+      "branch_name": "Nearby branch",
+      "branch_town": "",
+      "branch_distance_miles": 30
+    }
+  ],
+  "mileage_per_year": {
+    "green_max": 8000,
+    "yellow_max": 12000,
+    "orange_max": 16000,
+    "green_colour": "#008000",
+    "normal_colour": "#E67E22",
+    "high_colour": "#C0392B",
+    "very_high_colour": "#8E44AD"
+  },
+  "car_searches": []
+}

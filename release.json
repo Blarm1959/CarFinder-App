@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "project": "CarFinder",
+  "version": "2.0.0",
+  "githubSource": "v2.0.0",
+  "zipPrefix": "CarFinder-",
+  "port": 0,
+  "packageChanges": false,
+  "commit": "Release CarFinder v0.0.1",
+  "i18n": {
+    "enabled": false,
+    "folder": "src/i18n",
+    "masterLanguage": "en-GB",
+    "defaultLanguage": "en-GB",
+    "languages": [
+      "en-GB"
+    ]
+  }
+}
