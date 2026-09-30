@@ -222,8 +222,26 @@ def registration_date_display(value: object) -> str:
     return safe_text(value)
 
 
-def miles_per_year(registration: object, year: object, mileage: object) -> int | None:
-    """Return approximate annual mileage using the advertised vehicle year first.
+def first_registered_date(value: object) -> date | None:
+    """The real first-registration date, when the source site gives one."""
+    text = safe_text(value).strip()[:10]
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        return None
+
+
+def miles_per_year(registration: object, year: object, mileage: object, first_registered: object = None) -> int | None:
+    """Return approximate annual mileage.
+
+    When the source site gives the real first-registration date (Skoda, SEAT,
+    Cupra, Audi) that is used: mileage / years since first registration
+    (minimum 3 months).  Otherwise the original calculation below is used
+    unchanged.
+
+    Original calculation: uses the advertised vehicle year first.
 
     This deliberately favours the simple sanity-checkable calculation used when
     reviewing cars: a 2023 car in 2026 is treated as roughly 3 years old. UK
@@ -237,6 +255,11 @@ def miles_per_year(registration: object, year: object, mileage: object) -> int |
         mileage_float = float(mileage)
     except Exception:
         return None
+
+    real_date = first_registered_date(first_registered)
+    if real_date is not None:
+        years_old = max((date.today() - real_date).days / 365.25, 0.25)
+        return int(round(mileage_float / years_old))
 
     try:
         year_int = int(year)
@@ -473,9 +496,17 @@ def make_dataframe(rows: list[dict]) -> pd.DataFrame:
     )
     df["price_display"] = df["price_current"].apply(money)
     df["mileage_display"] = df["mileage"].apply(whole_number)
-    df["estimated_registration_date"] = df.apply(lambda r: infer_registration_date(r.get("registration"), r.get("year")), axis=1)
+    if "first_registered" not in df.columns:
+        df["first_registered"] = None
+    df["estimated_registration_date"] = df.apply(
+        lambda r: first_registered_date(r.get("first_registered")) or infer_registration_date(r.get("registration"), r.get("year")),
+        axis=1,
+    )
     df["estimated_registration_date_display"] = df["estimated_registration_date"].apply(registration_date_display)
-    df["miles_per_year"] = df.apply(lambda r: miles_per_year(r.get("registration"), r.get("year"), r.get("mileage")), axis=1)
+    df["miles_per_year"] = df.apply(
+        lambda r: miles_per_year(r.get("registration"), r.get("year"), r.get("mileage"), r.get("first_registered")),
+        axis=1,
+    )
     df["miles_per_year_sort"] = df["miles_per_year"].fillna(999999).astype(int)
     df["miles_per_year_display"] = df["miles_per_year"].apply(miles_per_year_display)
     df["miles_per_year_colour"] = df["miles_per_year"].apply(miles_per_year_colour)
@@ -1347,8 +1378,7 @@ def render_selected_vehicle(row: dict) -> None:
 **Reachability reason:** {safe_text(row.get("reachability_reason"))}  
 **Dealer group:** {safe_text(row.get("dealer_group_name"))}  
 **Nearest branch:** {safe_text(row.get("nearest_branch_name"))}  
-**Estimated registration date:** {safe_text(row.get("estimated_registration_date_display"))}  
-**First registered (from dealer site):** {safe_text(row.get("first_registered")) or "not given"}  
+**Registration date used for mi/yr and age:** {safe_text(row.get("estimated_registration_date_display"))}{" (from the dealer site)" if safe_text(row.get("first_registered")) else " (estimated from plate/year)"}  
 **Interest:** {interest_display(row) or "Not reviewed"}{(" — " + safe_text(row.get("interest_reason"))) if safe_text(row.get("interest_reason")) else ""}
 """
     )

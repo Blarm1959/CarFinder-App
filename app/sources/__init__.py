@@ -138,9 +138,9 @@ def transmission_matches(wanted: str, transmission_text: str) -> bool:
 
 
 def _load_modules() -> dict[str, ModuleType]:
-    from app.sources import skoda, vw
+    from app.sources import audi, cupra, seat, skoda, vw
 
-    return {vw.SOURCE_KEY: vw, skoda.SOURCE_KEY: skoda}
+    return {m.SOURCE_KEY: m for m in (vw, skoda, seat, cupra, audi)}
 
 
 _MODULES: dict[str, ModuleType] | None = None
