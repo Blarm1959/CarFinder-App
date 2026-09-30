@@ -61,3 +61,44 @@ def distance_miles(a: tuple[float, float] | None, b: tuple[float, float] | None)
     lat1, lon1, lat2, lon2 = map(math.radians, (a[0], a[1], b[0], b[1]))
     h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
     return int(round(3958.8 * 2 * math.asin(math.sqrt(h))))
+
+
+PLACE_URL = "https://api.postcodes.io/places"
+PLACE_CACHE_PATH = APP_ROOT / "data" / "cache" / "places.json"
+
+
+def place_location(town: str | None, path: Path | None = None) -> tuple[float, float] | None:
+    """Approximate (latitude, longitude) of a UK town or city name.
+
+    Used when a site gives the dealer's town but not its postcode or
+    coordinates (Kia, BMW).  Looked up once with postcodes.io and cached.
+    """
+    path = path or PLACE_CACHE_PATH
+    name = re.sub(r"\s+", " ", (town or "").strip())
+    key = name.lower()
+    if not key:
+        return None
+    cache = _load_cache(path)
+    if key in cache:
+        value = cache[key]
+        return (float(value[0]), float(value[1])) if value else None
+    try:
+        response = requests.get(PLACE_URL, params={"q": name, "limit": 5}, timeout=10)
+        results = response.json().get("result") if response.status_code == 200 else None
+    except (requests.RequestException, ValueError):
+        return None  # don't cache network failures
+    location = None
+    for place in results or []:
+        # Prefer an exact name match on a city/town over a street or hamlet.
+        if str(place.get("name_1") or "").lower() == key and place.get("latitude") is not None:
+            location = (float(place["latitude"]), float(place["longitude"]))
+            if str(place.get("local_type") or "") in {"City", "Town"}:
+                break
+    if location is None and results:
+        first = results[0]
+        if first.get("latitude") is not None:
+            location = (float(first["latitude"]), float(first["longitude"]))
+    cache[key] = list(location) if location else None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache), encoding="utf-8")
+    return location
