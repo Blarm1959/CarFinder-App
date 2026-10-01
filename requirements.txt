@@ -3,3 +3,4 @@ pandas
 beautifulsoup4
 requests
 lxml
+curl_cffi

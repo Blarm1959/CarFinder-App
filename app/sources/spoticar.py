@@ -12,7 +12,11 @@ Citroën, Vauxhall, Fiat and DS (and other Stellantis makes):
   registration, VIN, price, mileage and first-registration date, plus the
   dealer's name, town and latitude/longitude, so distance is the straight
   line from the person's postcode to the dealer;
-* the colour is read from the photo description ("Used Car - Mpv Petrol Black").
+* the colour is read from the photo description ("Used Car - Mpv Petrol Black");
+* the site sits behind Akamai, which refuses plain Python/curl requests (HTTP 403)
+  because of their TLS handshake, so pages are fetched with ``curl_cffi``
+  impersonating Chrome. If ``curl_cffi`` is not installed, plain ``requests`` is
+  used and a block is reported as an error rather than as "no cars found".
 """
 from __future__ import annotations
 
@@ -27,6 +31,11 @@ from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
+
+try:  # Akamai blocks plain requests; curl_cffi sends a real Chrome TLS handshake.
+    from curl_cffi import requests as cffi_requests
+except ImportError:  # pragma: no cover - depends on what is installed
+    cffi_requests = None
 
 from app.db import now_iso
 from app.geo import distance_miles, postcode_location
@@ -80,6 +89,10 @@ SITE_BODY = {"hatchback": "Hatchback", "city car": "Hatchback", "estate": "Estat
              "saloon": "Saloon"}
 BODY_WORDS = ("commercial vehicle", "city car", "hatchback", "estate", "saloon", "mpv", "suv", "coupe", "convertible",
               "cabriolet", "van", "pick-up", "pickup", "combi")
+IMPERSONATE = "chrome"
+# A real results page is several hundred KB; a bot-check page is a few KB.
+SMALL_PAGE_BYTES = 100_000
+
 SEVEN_SEATERS = ("5008", "grand picasso", "grand spacetourer", "zafira", "berlingo xl", "rifter long", "combo life xl")
 
 HEADERS = {
@@ -170,10 +183,39 @@ def build_url(filters: list[tuple[str, str]], page: int) -> str:
     return f"{SITE_ROOT}{LIST_PATH}?" + "&".join(parts)
 
 
+_session: Any = None
+
+
+def _fetcher() -> str:
+    return "curl_cffi (Chrome)" if cffi_requests is not None else "plain requests (curl_cffi not installed)"
+
+
+def _http() -> Any:
+    """One shared session (keeps the site's cookies between pages)."""
+    global _session
+    if _session is None:
+        if cffi_requests is not None:
+            # Let curl_cffi send Chrome's own User-Agent so it matches the TLS handshake.
+            _session = cffi_requests.Session(impersonate=IMPERSONATE)
+        else:
+            _session = requests.Session()
+            _session.headers.update(HEADERS)
+    return _session
+
+
 def _get(url: str, timeout: int = 30) -> str:
-    response = requests.get(url, headers=HEADERS, timeout=timeout)
+    headers = {"Accept-Language": HEADERS["Accept-Language"]} if cffi_requests is not None else None
+    response = _http().get(url, headers=headers, timeout=timeout)
+    if response.status_code == 403:
+        server = response.headers.get("Server") or "the site"
+        raise RuntimeError(f"Spoticar blocked the request (HTTP 403 from {server}; fetched with {_fetcher()})")
     response.raise_for_status()
     return response.text
+
+
+def looks_blocked(html: str, cards: list[dict[str, Any]], total: int | None) -> bool:
+    """A small page with no car list and no result count is a bot check, not "no cars"."""
+    return not cards and total is None and len(html) < SMALL_PAGE_BYTES
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +474,9 @@ def search(car: dict[str, Any], settings: dict[str, Any], timings: dict[str, Any
         if timings is not None:
             timings["search_fetch_seconds"] = round(float(timings.get("search_fetch_seconds") or 0) + fetch_seconds, 3)
         cards, total = parse_page(html, make)
+        if page == 1 and looks_blocked(html, cards, total):
+            raise RuntimeError(f"Spoticar returned a page with no car list ({len(html)} bytes), probably a bot "
+                               f"check; fetched with {_fetcher()}")
         if total is not None:
             pages = max(1, math.ceil(total / PAGE_SIZE))
         new_cards = [c for c in cards if c.get("id") not in seen_ids]
