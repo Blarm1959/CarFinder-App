@@ -16,13 +16,17 @@ Citroën, Vauxhall, Fiat and DS (and other Stellantis makes):
 * the site sits behind Akamai, which refuses plain Python/curl requests (HTTP 403)
   because of their TLS handshake, so pages are fetched with ``curl_cffi``
   impersonating Chrome. If ``curl_cffi`` is not installed, plain ``requests`` is
-  used and a block is reported as an error rather than as "no cars found".
+  used and a block is reported as an error rather than as "no cars found";
+* Akamai also refuses requests that arrive too quickly, so result pages are
+  fetched a few seconds apart and a 403 is retried with a fresh session after
+  a longer wait.
 """
 from __future__ import annotations
 
 import base64
 import json
 import math
+import random
 import re
 import time
 import unicodedata
@@ -92,6 +96,10 @@ BODY_WORDS = ("commercial vehicle", "city car", "hatchback", "estate", "saloon",
 IMPERSONATE = "chrome"
 # A real results page is several hundred KB; a bot-check page is a few KB.
 SMALL_PAGE_BYTES = 100_000
+# Pause between result pages (seconds, plus up to PAGE_JITTER more) and the waits before retrying a 403.
+PAGE_DELAY = 3.0
+PAGE_JITTER = 2.0
+RETRY_WAITS = (10.0, 30.0)
 
 SEVEN_SEATERS = ("5008", "grand picasso", "grand spacetourer", "zafira", "berlingo xl", "rifter long", "combo life xl")
 
@@ -190,27 +198,39 @@ def _fetcher() -> str:
     return "curl_cffi (Chrome)" if cffi_requests is not None else "plain requests (curl_cffi not installed)"
 
 
+def _make_session() -> Any:
+    if cffi_requests is not None:
+        # Let curl_cffi send Chrome's own User-Agent so it matches the TLS handshake.
+        return cffi_requests.Session(impersonate=IMPERSONATE)
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    return session
+
+
 def _http() -> Any:
     """One shared session (keeps the site's cookies between pages)."""
     global _session
     if _session is None:
-        if cffi_requests is not None:
-            # Let curl_cffi send Chrome's own User-Agent so it matches the TLS handshake.
-            _session = cffi_requests.Session(impersonate=IMPERSONATE)
-        else:
-            _session = requests.Session()
-            _session.headers.update(HEADERS)
+        _session = _make_session()
     return _session
 
 
 def _get(url: str, timeout: int = 30) -> str:
+    """Fetch a page; on a 403 wait, start a fresh session and try again (RETRY_WAITS)."""
+    global _session
     headers = {"Accept-Language": HEADERS["Accept-Language"]} if cffi_requests is not None else None
-    response = _http().get(url, headers=headers, timeout=timeout)
-    if response.status_code == 403:
-        server = response.headers.get("Server") or "the site"
-        raise RuntimeError(f"Spoticar blocked the request (HTTP 403 from {server}; fetched with {_fetcher()})")
-    response.raise_for_status()
-    return response.text
+    attempts = len(RETRY_WAITS) + 1
+    for attempt in range(attempts):
+        response = _http().get(url, headers=headers, timeout=timeout)
+        if response.status_code != 403:
+            response.raise_for_status()
+            return response.text
+        if attempt < len(RETRY_WAITS):
+            _session = None
+            time.sleep(RETRY_WAITS[attempt])
+    server = response.headers.get("Server") or "the site"
+    raise RuntimeError(f"Spoticar blocked the request (HTTP 403 from {server}, {attempts} tries; "
+                       f"fetched with {_fetcher()})")
 
 
 def looks_blocked(html: str, cards: list[dict[str, Any]], total: int | None) -> bool:
@@ -468,8 +488,13 @@ def search(car: dict[str, Any], settings: dict[str, Any], timings: dict[str, Any
     pages = 1
     page = 1
     while page <= min(pages, MAX_PAGES):
+        if page > 1:
+            time.sleep(PAGE_DELAY + random.uniform(0, PAGE_JITTER))
         started = time.perf_counter()
-        html = _get(build_url(filters, page))
+        try:
+            html = _get(build_url(filters, page))
+        except RuntimeError as exc:
+            raise RuntimeError(f"{exc} on results page {page}") from exc
         fetch_seconds = time.perf_counter() - started
         if timings is not None:
             timings["search_fetch_seconds"] = round(float(timings.get("search_fetch_seconds") or 0) + fetch_seconds, 3)
