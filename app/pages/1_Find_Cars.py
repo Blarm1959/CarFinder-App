@@ -31,7 +31,7 @@ from app.users import list_users
 
 SEARCH_SCRIPT = REPO_ROOT / "scripts" / "run_search.py"
 
-st.set_page_config(page_title="Find Cars · CarFinder", page_icon="🔎", layout="wide")
+st.set_page_config(page_title="Find Cars · CarFinder", layout="wide")
 
 
 def current_user() -> dict[str, Any]:
@@ -212,10 +212,18 @@ def render_location(person: dict[str, Any]) -> None:
 
 
 def render_discovery(person: dict[str, Any], makes: list[str]) -> None:
-    st.subheader("Discovery Search")
-    st.caption(
-        "Describe the sort of car you want. CarFinder searches the manufacturers you choose "
-        "and combines the matching cars into one list."
+    st.subheader("Discovery")
+    st.markdown(
+        """
+        <div class="cf-section-card">
+          <div class="cf-section-title">Start broad</div>
+          <p class="cf-section-copy">
+            Set the type of car you want and choose where CarFinder should look.
+            There is no fixed manufacturer limit.
+          </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     preferred = st.multiselect(
@@ -372,9 +380,17 @@ def render_discovery(person: dict[str, Any], makes: list[str]) -> None:
 
 def editor_targets(person: dict[str, Any], makes: list[str]) -> None:
     st.subheader("My Car List")
-    st.caption(
-        "These are the car types you have decided are worth watching. There is no fixed list size. "
-        "Common limits apply to every target unless an override is entered."
+    st.markdown(
+        """
+        <div class="cf-section-card">
+          <div class="cf-section-title">Your shortlist of car types</div>
+          <p class="cf-section-copy">
+            Keep as many targets as you need. Common limits apply automatically,
+            with per-car overrides only where you want them.
+          </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
     my_list = person.setdefault("my_car_list", {"common_limits": {}, "targets": []})
     common = dict(my_list.get("common_limits") or {})
@@ -542,9 +558,18 @@ def main() -> None:
         st.warning("Your login is no longer available. Return to CarFinder and log in again.")
         st.stop()
 
-    st.title("🔎 Find Cars")
-    st.caption(
-        "Discovery finds possibilities. My Car List keeps watching the car types you decide are interesting."
+    st.markdown(
+        """
+        <div class="cf-hero">
+          <div class="cf-eyebrow">CarFinder</div>
+          <div class="cf-hero-title">Find the right car, then keep watching it.</div>
+          <p class="cf-hero-copy">
+            Start broad with Discovery across the manufacturers you choose. When a model looks
+            worth following, add it to My Car List and let CarFinder concentrate on those targets.
+          </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     settings = load_settings()
@@ -553,15 +578,36 @@ def main() -> None:
 
     render_location(person)
 
-    discovery_tab, my_list_tab = st.tabs(["Discovery", "My Car List"])
-    with discovery_tab:
+    requested = st.session_state.pop("find_cars_section", None)
+    if requested in {"Discovery", "My Car List"}:
+        st.session_state["find_cars_nav"] = requested
+    if st.session_state.get("find_cars_nav") not in {"Discovery", "My Car List"}:
+        st.session_state["find_cars_nav"] = "Discovery"
+
+    section = st.radio(
+        "Find Cars section",
+        ["Discovery", "My Car List"],
+        horizontal=True,
+        key="find_cars_nav",
+        label_visibility="collapsed",
+    )
+
+    if section == "Discovery":
         render_discovery(person, makes)
-    with my_list_tab:
+    else:
         editor_targets(person, makes)
 
-    st.info(
-        "The main CarFinder page remains your results/review screen for scoring, price history, "
-        "photos, sensors, dealer reachability and Interested / Not suitable."
+    st.markdown(
+        """
+        <div class="cf-section-card">
+          <div class="cf-section-title">Results and review</div>
+          <p class="cf-section-copy">
+            The main CarFinder screen holds your live results, scoring, price history, photos,
+            sensors, dealer reachability and Interested / Not suitable decisions.
+          </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 

@@ -636,3 +636,13 @@ def load_version() -> dict[str, str]:
     info["version"] = str(release.get("version") or build.get("version") or "")
     info["built"] = str(build.get("builtAt") or "")[:10]
     return info
+
+
+# Install the shared CarFinder presentation layer before each Streamlit page
+# calls st.set_page_config(). This keeps styling separate from search logic.
+try:
+    from app.modern_ui import install_global_ui
+    install_global_ui()
+except Exception:
+    # Presentation must never prevent the search engine/settings module loading.
+    pass
