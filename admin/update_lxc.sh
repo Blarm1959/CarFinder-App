@@ -23,10 +23,8 @@ echo "Installing requirements..."
 pip install -r requirements.txt
 
 echo
-echo "Updating database..."
-if [ -f scripts/import_master_state.py ]; then
-    python scripts/import_master_state.py
-fi
+echo "Checking CarFinder major-version data..."
+python scripts/ensure_major_data_version.py
 
 echo
 echo "Starting Streamlit..."
