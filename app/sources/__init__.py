@@ -91,12 +91,12 @@ def transmission_matches(wanted: str, transmission_text: str) -> bool:
 
 def _load_modules() -> dict[str, ModuleType]:
     from app.sources import (
-        audi, bmw, codeweavers, cupra, hyundai, jeepalfa, jlr, kia, mazda, mercedes, mg, mini,
+        audi, bmw, codeweavers, cupra, ford, hyundai, jeepalfa, jlr, kia, mazda, mercedes, mg, mini,
         mitsubishi, nissan, renew, seat, skoda, spoticar, suzuki, toyota, volvo, vw,
     )
     ordered = (
         vw, skoda, seat, cupra, audi, kia, bmw, spoticar, toyota, hyundai, volvo,
-        mercedes, renew, nissan, mitsubishi, mazda, jlr, codeweavers, mini, mg, suzuki, jeepalfa,
+        mercedes, renew, nissan, mitsubishi, mazda, jlr, codeweavers, mini, mg, suzuki, jeepalfa, ford,
     )
     return {m.SOURCE_KEY: m for m in ordered}
 
