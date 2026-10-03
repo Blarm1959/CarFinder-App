@@ -23,6 +23,10 @@ echo "Installing requirements..."
 pip install -r requirements.txt
 
 echo
+echo "Applying one-time v3 clean-data repair..."
+python scripts/force_clean_v3.py
+
+echo
 echo "Checking CarFinder major-version data..."
 python scripts/ensure_major_data_version.py
 
