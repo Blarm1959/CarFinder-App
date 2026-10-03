@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Run every enabled car search from Settings and merge the results.
+"""Run CarFinder v3 searches and merge the results.
 
-Each car search is handled by the source module for its make (see
-``app/sources``).  All modules return the same standard listing format, so the
-database update below is the same whichever site a car came from.
+Modes:
+- targets (default): enabled My Car List targets.
+- discovery: the owner's broad Discovery search expanded across the chosen makes.
+- all: targets plus Discovery.
+
+Each manufacturer adapter still receives the same effective search shape used
+before v3.  Discovery/common-limit/override concepts are resolved before the
+adapter is called.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import time
@@ -30,12 +36,19 @@ from app.db import (  # noqa: E402
     upsert_vehicle,
 )
 from app.settings import (  # noqa: E402
+    discovery_searches,
     enabled_car_searches,
     load_settings,
     person_settings,
     search_settings_for,
+    target_searches,
 )
-from app.sources import source_for_make  # noqa: E402
+from app.sources import (  # noqa: E402
+    available_makes,
+    fuel_matches,
+    source_for_make,
+    transmission_matches,
+)
 from app.users import list_users  # noqa: E402
 
 CACHE_DIR = REPO_ROOT / "data" / "cache"
@@ -72,13 +85,82 @@ def record_change(diagnostics: dict[str, Any], pending: list[dict[str, Any]], ch
     pending.append(change)
 
 
-def save_rows(conn, run_id: int, car: dict[str, Any], rows: list[dict[str, Any]], diagnostics: dict[str, Any],
-              radius: int = 30) -> None:
-    """Write one search's standard rows to the database."""
+def _number(value: Any) -> int | None:
+    try:
+        if value is None or value != value:
+            return None
+    except Exception:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def verified_match(row: dict[str, Any], car: dict[str, Any]) -> bool:
+    """Final v3 hard-filter check after a manufacturer adapter returns a row.
+
+    If the user explicitly requires a property, unknown data does not count as
+    a match.  This is particularly important for body type and minimum seats.
+    Manufacturer adapters may still do richer/native filtering first.
+    """
+    wanted_body = str(car.get("body_type") or "Any")
+    if wanted_body != "Any":
+        body = str(row.get("body_type") or "").strip()
+        if not body or body != wanted_body:
+            return False
+
+    wanted_fuel = str(car.get("fuel") or "Any")
+    if wanted_fuel != "Any":
+        fuel = str(row.get("fuel") or "").strip()
+        if not fuel or not fuel_matches(wanted_fuel, fuel):
+            return False
+
+    wanted_gear = str(car.get("transmission") or "Any")
+    if wanted_gear != "Any":
+        gear = str(row.get("transmission") or "").strip()
+        if not gear or not transmission_matches(wanted_gear, gear):
+            return False
+
+    seats_min = _number(car.get("seats_min"))
+    if seats_min is not None:
+        seats = _number(row.get("seats"))
+        if seats is None or seats < seats_min:
+            return False
+
+    for key, row_key, relation in (
+        ("price_min", "price", "min"),
+        ("price_max", "price", "max"),
+        ("mileage_max", "mileage", "max"),
+        ("year_min", "year", "min"),
+    ):
+        wanted = _number(car.get(key))
+        if wanted is None:
+            continue
+        actual = _number(row.get(row_key))
+        if actual is None:
+            return False
+        if relation == "min" and actual < wanted:
+            return False
+        if relation == "max" and actual > wanted:
+            return False
+
+    # power_min is left to the source adapter because power is not yet one of
+    # CarFinder's universal result fields.
+    return True
+
+
+def save_rows(
+    conn,
+    run_id: int,
+    car: dict[str, Any],
+    rows: list[dict[str, Any]],
+    diagnostics: dict[str, Any],
+    radius: int = 30,
+) -> None:
+    """Write one effective search's standard rows to the database."""
     site = car.get("make") or "search"
     for row in rows:
-        # Sold/rejected are set by hand on the shared car row; a search
-        # result must not overwrite them.
         row.pop("status", None)
         row["car_search_id"] = car["id"]
         row["car_search_name"] = car["name"]
@@ -98,66 +180,174 @@ def save_rows(conn, run_id: int, car: dict[str, Any], rows: list[dict[str, Any]]
         if existing is None:
             diagnostics["cars_new"] += 1
             record_change(diagnostics, pending, {
-                "registration": reg, "change_type": "new", "old_value": "", "new_value": "active",
+                "registration": reg,
+                "change_type": "new",
+                "old_value": "",
+                "new_value": "active",
                 "reason": f"New registration found in {car['name']} search",
             })
         else:
             diagnostics["cars_matched"] += 1
             if (existing["status"] or "active") == "missing":
                 record_change(diagnostics, pending, {
-                    "registration": reg, "change_type": "returned", "old_value": "missing", "new_value": "active",
+                    "registration": reg,
+                    "change_type": "returned",
+                    "old_value": "missing",
+                    "new_value": "active",
                     "reason": f"Registration found again in {car['name']} search",
                 })
             old_price, new_price = existing["price_current"], row.get("price")
             if old_price is not None and new_price is not None and int(old_price) != int(new_price):
                 record_change(diagnostics, pending, {
-                    "registration": reg, "change_type": "price", "old_value": int(old_price), "new_value": int(new_price),
+                    "registration": reg,
+                    "change_type": "price",
+                    "old_value": int(old_price),
+                    "new_value": int(new_price),
                     "reason": f"{site} price changed",
                 })
             old_miles, new_miles = existing["mileage"], row.get("mileage")
             if old_miles is not None and new_miles is not None and int(old_miles) != int(new_miles):
                 record_change(diagnostics, pending, {
-                    "registration": reg, "change_type": "mileage", "old_value": int(old_miles), "new_value": int(new_miles),
+                    "registration": reg,
+                    "change_type": "mileage",
+                    "old_value": int(old_miles),
+                    "new_value": int(new_miles),
                     "reason": f"{site} mileage changed",
                 })
             old_photo = existing["photo_status"] or "unknown"
             new_photo = row.get("photo_status") or "unknown"
             if old_photo != new_photo:
                 record_change(diagnostics, pending, {
-                    "registration": reg, "change_type": "photo_status", "old_value": old_photo, "new_value": new_photo,
+                    "registration": reg,
+                    "change_type": "photo_status",
+                    "old_value": old_photo,
+                    "new_value": new_photo,
                     "reason": row.get("photo_reason") or f"{site} photo status changed",
                 })
                 diagnostics["photo_status_changes"].append({
-                    "registration": reg, "from": old_photo, "to": new_photo, "reason": row.get("photo_reason") or "",
+                    "registration": reg,
+                    "from": old_photo,
+                    "to": new_photo,
+                    "reason": row.get("photo_reason") or "",
                 })
 
-        # The vehicle must exist before related history rows are inserted
-        # (price_history and vehicle_change_log have foreign keys).
         upsert_vehicle(conn, row, source="search")
         upsert_search_link(conn, car, row, radius)
 
         for change in pending:
-            add_vehicle_change(conn, run_id, change["registration"], change["change_type"],
-                               change.get("old_value"), change.get("new_value"), change.get("reason"))
+            add_vehicle_change(
+                conn, run_id, change["registration"], change["change_type"],
+                change.get("old_value"), change.get("new_value"), change.get("reason"),
+            )
 
         previous_price, current_price = row.get("previous_price"), row.get("price")
         if previous_price is not None and current_price is not None and previous_price != current_price:
-            add_price_observation(conn, reg, int(previous_price), source="previous_price", observed_at=row["last_seen"])
-
+            add_price_observation(
+                conn, reg, int(previous_price),
+                source="previous_price", observed_at=row["last_seen"],
+            )
         conn.commit()
 
 
-def run_search() -> dict[str, Any]:
+def _selected_searches(settings: dict[str, Any], mode: str, owner: str | None) -> list[dict[str, Any]]:
+    users = {u["username"] for u in list_users()}
+    if owner and owner not in users:
+        raise ValueError(f"Unknown user: {owner}")
+
+    searches: list[dict[str, Any]] = []
+    if mode in {"targets", "all"}:
+        searches.extend(enabled_car_searches(settings, owner))
+    if mode in {"discovery", "all"}:
+        discovery_owners = [owner] if owner else sorted(users)
+        for username in discovery_owners:
+            searches.extend(discovery_searches(settings, username, available_makes()))
+
+    return [s for s in searches if s.get("owner") in users]
+
+
+def _retire_unselected_discovery_links(conn, owner: str, active_ids: set[str]) -> int:
+    """Detach old Discovery results for makes no longer in the current scope.
+
+    Existing vehicle rows, price history and reviews are preserved.  Only the
+    obsolete Discovery search links are removed.
+    """
+    prefix = f"{owner}-discovery-%"
+    rows = conn.execute(
+        "SELECT DISTINCT car_search_id FROM vehicle_searches WHERE owner = ? AND car_search_id LIKE ?",
+        (owner, prefix),
+    ).fetchall()
+    stale = [r["car_search_id"] for r in rows if r["car_search_id"] not in active_ids]
+    if not stale:
+        return 0
+    placeholders = ",".join("?" for _ in stale)
+    cur = conn.execute(
+        f"DELETE FROM vehicle_searches WHERE owner = ? AND car_search_id IN ({placeholders})",
+        (owner, *stale),
+    )
+    conn.commit()
+    return int(cur.rowcount or 0)
+
+
+
+
+def _retire_removed_target_links(conn, settings: dict[str, Any], owner: str | None) -> int:
+    """Detach links for My Car List targets that no longer exist.
+
+    Disabled targets are kept because disabling is temporary; removed targets
+    are detached. Vehicle/history/review rows are never deleted here.
+    """
+    users = [owner] if owner else sorted((settings.get("people") or {}).keys())
+    removed = 0
+    for username in users:
+        keep = {c["id"] for c in target_searches(settings, username)}
+        rows = conn.execute(
+            """
+            SELECT DISTINCT car_search_id
+            FROM vehicle_searches
+            WHERE owner = ? AND car_search_id NOT LIKE ?
+            """,
+            (username, f"{username}-discovery-%"),
+        ).fetchall()
+        stale = [r["car_search_id"] for r in rows if r["car_search_id"] not in keep]
+        if not stale:
+            continue
+        placeholders = ",".join("?" for _ in stale)
+        cur = conn.execute(
+            f"DELETE FROM vehicle_searches WHERE owner = ? AND car_search_id IN ({placeholders})",
+            (username, *stale),
+        )
+        removed += int(cur.rowcount or 0)
+    if removed:
+        conn.commit()
+    return removed
+
+
+def run_search(mode: str = "targets", owner: str | None = None) -> dict[str, Any]:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     settings = load_settings()
-    # Only run searches that belong to someone who still has a login.
-    people = {u["username"] for u in list_users()}
-    cars = [car for car in enabled_car_searches(settings) if car.get("owner") in people]
+    cars = _selected_searches(settings, mode, owner)
 
     conn = connect()
     init_db(conn)
-    summary_url = "; ".join(f"{c['owner']}: {c['name']} ({c['make']})" for c in cars) or "No car searches enabled"
+
+    if mode in {"targets", "all"}:
+        _retire_removed_target_links(conn, settings, owner)
+
+    if mode in {"discovery", "all"}:
+        owners = {c["owner"] for c in cars if c.get("search_kind") == "discovery"}
+        if owner:
+            owners.add(owner)
+        for username in owners:
+            active_ids = {
+                c["id"] for c in cars
+                if c.get("owner") == username and c.get("search_kind") == "discovery"
+            }
+            _retire_unselected_discovery_links(conn, username, active_ids)
+
+    summary_url = "; ".join(
+        f"{c['owner']}: {c['name']} ({c['make']})" for c in cars
+    ) or f"No {mode} searches enabled"
     run_id = create_scrape_run(conn, summary_url)
     diagnostics = new_diagnostics()
     total_rows = 0
@@ -166,7 +356,11 @@ def run_search() -> dict[str, Any]:
     try:
         for car in cars:
             search_info: dict[str, Any] = {
-                "search": car["name"], "owner": car.get("owner"), "make": car["make"], "status": "complete",
+                "search": car["name"],
+                "owner": car.get("owner"),
+                "make": car["make"],
+                "kind": car.get("search_kind") or "target",
+                "status": "complete",
             }
             diagnostics["searches"].append(search_info)
             module = source_for_make(car.get("make"))
@@ -176,23 +370,36 @@ def run_search() -> dict[str, Any]:
                 continue
 
             try:
-                result = module.search(car, search_settings_for(settings, car.get("owner") or ""), diagnostics)
-            except Exception as exc:  # one failing site must not stop the others
+                result = module.search(
+                    car,
+                    search_settings_for(settings, car.get("owner") or ""),
+                    diagnostics,
+                )
+            except Exception as exc:
+                # One failing site must not stop the others.  Its previous
+                # active links are left alone because mark_missing_not_seen
+                # is only called after a successful source response.
                 search_info.update(status="failed", message=str(exc))
                 failures.append(f"{car['name']}: {exc}")
                 continue
 
+            result.rows = [row for row in result.rows if verified_match(row, car)]
             search_info["url"] = result.search_url
             search_info["cars_found"] = len(result.rows)
             total_rows += len(result.rows)
+
             cache_name = f"{module.SOURCE_KEY}_{car['id']}_last"
             (CACHE_DIR / f"{cache_name}.html").write_text(result.debug_html, encoding="utf-8")
             (CACHE_DIR / f"{cache_name}.txt").write_text(result.debug_text, encoding="utf-8")
 
             parsed_regs = {row["registration"] for row in result.rows}
             diagnostics["registrations_skipped"] += len(result.raw_regs - parsed_regs)
-            diagnostics["cars_with_dealer_photos"] += sum(1 for r in result.rows if r.get("photo_status") == "photos")
-            diagnostics["cars_with_stock_photos"] += sum(1 for r in result.rows if r.get("photo_status") == "awaiting")
+            diagnostics["cars_with_dealer_photos"] += sum(
+                1 for r in result.rows if r.get("photo_status") == "photos"
+            )
+            diagnostics["cars_with_stock_photos"] += sum(
+                1 for r in result.rows if r.get("photo_status") == "awaiting"
+            )
             diagnostics["photo_decisions"].extend(
                 {
                     "registration": r.get("registration"),
@@ -201,36 +408,54 @@ def run_search() -> dict[str, Any]:
                     "photo_count": r.get("photo_count"),
                     "reason": r.get("photo_reason") or "",
                 }
-                for r in sorted(result.rows, key=lambda r: (str(r.get("photo_status") or ""), str(r.get("registration") or "")))
+                for r in sorted(
+                    result.rows,
+                    key=lambda r: (
+                        str(r.get("photo_status") or ""),
+                        str(r.get("registration") or ""),
+                    ),
+                )
             )
 
             db_started = time.perf_counter()
-            radius = int(person_settings(settings, car.get("owner") or "").get("local_radius_miles") or 30)
+            radius = int(
+                person_settings(settings, car.get("owner") or "").get("local_radius_miles") or 30
+            )
             save_rows(conn, run_id, car, result.rows, diagnostics, radius)
-            diagnostics["db_write_seconds"] = round(diagnostics["db_write_seconds"] + time.perf_counter() - db_started, 3)
+            diagnostics["db_write_seconds"] = round(
+                diagnostics["db_write_seconds"] + time.perf_counter() - db_started, 3
+            )
 
-            # Only mark this search's cars missing when the search clearly
-            # worked (at least one registration seen in the page data).
             missing_started = time.perf_counter()
-            seen = parsed_regs | result.raw_regs
-            if seen:
+            # raw_regs represents registrations returned by the source before
+            # parsing/filtering.  For a v3 hard filter, rows filtered out by
+            # verified_match should count as not seen for this effective search.
+            seen = parsed_regs
+            if result.raw_regs or parsed_regs:
                 marked = mark_missing_not_seen(conn, sorted(seen), car["id"])
                 diagnostics["cars_marked_missing"] += len(marked)
                 search_info["marked_missing"] = len(marked)
                 for reg in marked:
                     reason = f"Registration not seen in latest {car['name']} search"
                     diagnostics["vehicle_changes"].append({
-                        "registration": reg, "change_type": "missing", "old_value": "active",
-                        "new_value": "missing", "reason": reason,
+                        "registration": reg,
+                        "change_type": "missing",
+                        "old_value": "active",
+                        "new_value": "missing",
+                        "reason": reason,
                     })
-                    add_vehicle_change(conn, run_id, reg, "missing", "active", "missing", reason)
+                    add_vehicle_change(
+                        conn, run_id, reg, "missing", "active", "missing", reason
+                    )
                 conn.commit()
             diagnostics["missing_mark_seconds"] = round(
                 diagnostics["missing_mark_seconds"] + time.perf_counter() - missing_started, 3
             )
 
         reachability_counts = {"LOCAL": 0, "TRANSFERABLE": 0, "REMOTE": 0}
-        for link in conn.execute("SELECT reachability_status FROM vehicle_searches WHERE status = 'active'"):
+        for link in conn.execute(
+            "SELECT reachability_status FROM vehicle_searches WHERE status = 'active'"
+        ):
             status = str(link["reachability_status"] or "REMOTE").upper()
             reachability_counts[status if status in reachability_counts else "REMOTE"] += 1
         diagnostics["reachability_counts"] = reachability_counts
@@ -239,23 +464,29 @@ def run_search() -> dict[str, Any]:
         diagnostics["timing_json"] = json.dumps({
             key: diagnostics.get(key)
             for key in (
-                "search_fetch_seconds", "parsing_seconds", "detail_fetch_count", "detail_fetch_seconds",
-                "detail_fetch_errors", "db_write_seconds", "missing_mark_seconds", "pages",
-                "photo_status_changes", "photo_decisions", "vehicle_changes", "reachability_counts", "searches",
+                "search_fetch_seconds", "parsing_seconds", "detail_fetch_count",
+                "detail_fetch_seconds", "detail_fetch_errors", "db_write_seconds",
+                "missing_mark_seconds", "pages", "photo_status_changes",
+                "photo_decisions", "vehicle_changes", "reachability_counts", "searches",
             )
         }, ensure_ascii=False)
 
         if not cars:
-            message = "No car searches are enabled. Add one in ⚙ Settings."
+            message = (
+                "No My Car List targets are enabled."
+                if mode == "targets"
+                else "Discovery has no manufacturers selected."
+            )
         else:
             message = (
-                f"Searched {len(cars)} car search(es). Found {total_rows} car(s). "
+                f"Ran {len(cars)} {mode} search(es). Found {total_rows} car(s). "
                 f"Matched {diagnostics['cars_matched']}, new {diagnostics['cars_new']}, "
-                f"missing {diagnostics['cars_marked_missing']}, skipped {diagnostics['registrations_skipped']}."
+                f"missing {diagnostics['cars_marked_missing']}, "
+                f"skipped {diagnostics['registrations_skipped']}."
             )
         if failures:
             message += " Problems: " + " | ".join(failures)
-        status = "complete" if not failures else ("failed" if len(failures) == len(cars) else "partial")
+        status = "complete" if not failures else ("failed" if cars and len(failures) == len(cars) else "partial")
         finish_scrape_run(conn, run_id, total_rows, status, message, diagnostics)
         diagnostics.update(cars_found=total_rows, message=message, status=status)
         return diagnostics
@@ -264,13 +495,29 @@ def run_search() -> dict[str, Any]:
         diagnostics["runtime_seconds"] = round(time.perf_counter() - started, 2)
         finish_scrape_run(conn, run_id, total_rows, "failed", str(exc), diagnostics)
         raise
-
     finally:
         conn.close()
 
 
-def main() -> int:
-    diagnostics = run_search()
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=("targets", "discovery", "all"),
+        default="targets",
+        help="Which v3 search set to run.",
+    )
+    parser.add_argument(
+        "--owner",
+        default=None,
+        help="Optional username. Required by the Find Cars page for a personal Discovery run.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    diagnostics = run_search(args.mode, args.owner)
     print("CarFinder search complete.")
     print(diagnostics.get("message") or "")
     print(f"Dealer photos: {diagnostics.get('cars_with_dealer_photos', 0)}")

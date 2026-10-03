@@ -1,4 +1,5 @@
 {
+  "schema_version": 3,
   "local_radius_miles": 30,
   "search_radius_miles": 900,
   "dealer_groups": [

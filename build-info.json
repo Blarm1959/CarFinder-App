@@ -1,7 +1,7 @@
 {
-  "version": "2.0.14",
-  "tag": "v2.0.14",
-  "commit": "084f15eae55aaf4e7409a38568f6e472fa25f7a7",
-  "builtUtc": "2026-10-03T10:28:28.3168396Z",
+  "version": "3.0.1",
+  "tag": "v3.0.1",
+  "commit": "180757f848c790848cd512abc3109268b8b2f382",
+  "builtUtc": "2026-10-03T16:58:04.0276413Z",
   "notes": "Build metadata recorded by ProjectRelease.ps1."
 }
