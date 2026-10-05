@@ -19,21 +19,25 @@ _original_info = None
 MODERN_CSS = r"""
 <style>
 :root {
-  --cf-bg: #f6f7f9;
+  --cf-bg: #eef3f8;
   --cf-surface: #ffffff;
-  --cf-surface-soft: #f1f4f8;
-  --cf-text: #172033;
-  --cf-muted: #687387;
-  --cf-border: #e3e7ee;
-  --cf-primary: #3157d5;
-  --cf-primary-dark: #2446b6;
+  --cf-surface-soft: #f6f8fb;
+  --cf-text: #172331;
+  --cf-muted: #667586;
+  --cf-border: #d7e0e8;
+  --cf-primary: #173b67;
+  --cf-primary-dark: #12375f;
+  --cf-primary-soft: #edf5ff;
   --cf-radius: 16px;
   --cf-shadow: 0 8px 30px rgba(24, 38, 70, .06);
 }
 
 /* Overall canvas */
 .stApp {
-  background: var(--cf-bg);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(61,111,163,.10), transparent 32rem),
+    radial-gradient(circle at 100% 15%, rgba(197,93,75,.06), transparent 28rem),
+    var(--cf-bg);
   color: var(--cf-text);
 }
 [data-testid="stAppViewContainer"] > .main {
@@ -283,6 +287,278 @@ div[data-testid="column"] .cf-primary-actions .stButton > button {
     border-radius: 17px;
   }
 }
+
+/* v3.0.5 search-app layout */
+.cf-hero-compact {
+  padding: 1.55rem 1.7rem 1.45rem;
+  margin-bottom: 1rem;
+}
+.cf-search-heading {
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  margin: 1.25rem 0 .8rem;
+}
+.cf-search-title {
+  font-size: 1.55rem;
+  font-weight: 760;
+  letter-spacing: -.025em;
+  color: var(--cf-text);
+}
+.cf-search-subtitle {
+  color: var(--cf-muted);
+  margin-top: .15rem;
+}
+.cf-inline-note {
+  min-height: 2.75rem;
+  display:flex;
+  align-items:center;
+  padding: .65rem .9rem;
+  border-radius: 12px;
+  background: var(--cf-surface-soft);
+  color: var(--cf-muted);
+  border:1px solid var(--cf-border);
+}
+.cf-form-divider {
+  height:1px;
+  background:var(--cf-border);
+  margin:1rem 0 1.1rem;
+}
+.cf-results-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin: 1.45rem 0 .65rem;
+  font-size: 1.1rem;
+  font-weight: 720;
+}
+.cf-results-heading strong {
+  min-width:2rem;
+  text-align:center;
+  padding:.18rem .55rem;
+  border-radius:999px;
+  background:var(--cf-surface-soft);
+  color:var(--cf-muted);
+  font-size:.86rem;
+}
+.cf-empty-lite {
+  border:1px dashed #ccd4e2;
+  border-radius:16px;
+  padding:1.25rem 1.35rem;
+  color:var(--cf-muted);
+  background:rgba(255,255,255,.55);
+}
+[data-testid="stVerticalBlockBorderWrapper"] {
+  border-radius:18px !important;
+  border-color:var(--cf-border) !important;
+  background:var(--cf-surface);
+  box-shadow:var(--cf-shadow);
+}
+[data-testid="stVerticalBlockBorderWrapper"] > div {
+  padding: .25rem .35rem;
+}
+[data-testid="stToggle"] label {
+  font-weight:650;
+}
+[data-testid="stMultiSelect"] [data-baseweb="tag"] {
+  border-radius:999px !important;
+}
+div[data-testid="stSelectbox"] > div > div,
+div[data-testid="stMultiSelect"] > div > div,
+div[data-testid="stTextInput"] > div > div {
+  min-height: 2.75rem;
+}
+[data-testid="stSidebarNav"] ul {
+  gap:.25rem;
+}
+[data-testid="stSidebarNav"] a {
+  border-radius:10px;
+}
+[data-testid="stSidebarNav"] a[aria-current="page"] {
+  background:rgba(49,87,213,.09);
+  font-weight:650;
+}
+
+
+/* v3.0.6 — Lipfty 14-inspired application language */
+.block-container {
+  max-width: 1500px;
+  padding-top: 1.15rem;
+}
+.cf-hero {
+  background: rgba(255,255,255,.94);
+  border-color: rgba(212,222,232,.94);
+  box-shadow: 0 12px 34px rgba(29,56,84,.08);
+}
+.cf-hero-title {
+  color: #12375f;
+}
+.cf-eyebrow {
+  color: #245b96;
+}
+.cf-page-heading {
+  margin: 1rem 0 .75rem;
+}
+.cf-page-title {
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  color: #12375f;
+}
+.cf-page-subtitle {
+  margin-top: .2rem;
+  color: var(--cf-muted);
+  font-size: .94rem;
+}
+.cf-panel-title {
+  margin: 0 0 .85rem;
+  color: #173d66;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.cf-spacer {
+  height: .55rem;
+}
+.cf-results-bar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin: 1.25rem 0 .55rem;
+}
+.cf-results-bar > div {
+  display:flex;
+  align-items:center;
+  gap:.65rem;
+}
+.cf-results-bar strong {
+  font-size:1.08rem;
+  color:#173d66;
+}
+.cf-results-bar span {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:2.1rem;
+  height:1.75rem;
+  padding:0 .65rem;
+  border-radius:999px;
+  background:#edf5ff;
+  color:#245b96;
+  font-size:.82rem;
+  font-weight:800;
+}
+
+/* Make Streamlit radio controls behave visually like Lipfty choice cards. */
+div[role="radiogroup"] {
+  display:flex !important;
+  flex-wrap:wrap !important;
+  gap:.5rem !important;
+}
+div[role="radiogroup"] > label {
+  margin:0 !important;
+  padding:.62rem .85rem !important;
+  min-height:42px;
+  border:2px solid #d7e0e6;
+  border-radius:13px;
+  background:#fff;
+  cursor:pointer;
+  transition: border-color .12s ease, background .12s ease, transform .12s ease;
+}
+div[role="radiogroup"] > label:hover {
+  border-color:#9fb8d2;
+  background:#f8fbff;
+  transform:translateY(-1px);
+}
+div[role="radiogroup"] > label:has(input:checked) {
+  border-color:#2165aa;
+  background:#edf5ff;
+  color:#173d66;
+}
+div[role="radiogroup"] [data-testid="stMarkdownContainer"] p {
+  font-weight:750;
+  font-size:.9rem;
+}
+div[role="radiogroup"] [data-baseweb="radio"] > div:first-child {
+  display:none;
+}
+
+/* Lipfty-style field panels */
+[data-testid="stVerticalBlockBorderWrapper"] {
+  border:1px solid #cfdae2 !important;
+  border-radius:16px !important;
+  background:rgba(255,255,255,.95) !important;
+  box-shadow:0 8px 24px rgba(29,56,84,.05) !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"] > div {
+  padding:.55rem .7rem .7rem !important;
+}
+
+/* Compact form controls */
+[data-baseweb="input"] > div,
+[data-baseweb="select"] > div,
+[data-testid="stNumberInputContainer"] > div,
+[data-testid="stTextInput"] input {
+  background:#fff !important;
+  border-color:#c9d6df !important;
+}
+[data-testid="stTextInput"] label p,
+[data-testid="stSelectbox"] label p,
+[data-testid="stMultiSelect"] label p {
+  color:#314960;
+  font-weight:750;
+}
+
+/* Strong Lipfty-style actions */
+.stButton > button {
+  min-height:40px !important;
+  border-radius:10px !important;
+  border-color:#b9c7d5 !important;
+  color:#173b67 !important;
+  font-weight:750 !important;
+  background:#fff !important;
+}
+.stButton > button[kind="primary"],
+button[kind="primary"] {
+  background:#163f71 !important;
+  color:#fff !important;
+  border-color:#163f71 !important;
+}
+.stButton > button[kind="primary"]:hover,
+button[kind="primary"]:hover {
+  background:#12375f !important;
+  border-color:#12375f !important;
+}
+
+/* Sidebar kept quiet, like a frame rather than the product itself. */
+[data-testid="stSidebar"] {
+  background:#eef2f6;
+}
+[data-testid="stSidebarNav"] a {
+  min-height:38px;
+  display:flex;
+  align-items:center;
+}
+[data-testid="stSidebarNav"] a[aria-current="page"] {
+  background:#dfe8f2 !important;
+  color:#173b67 !important;
+}
+
+/* Results/data should feel like app content rather than a worksheet. */
+[data-testid="stDataFrame"] {
+  border:1px solid #cfdae2;
+  border-radius:14px;
+  box-shadow:0 8px 24px rgba(29,56,84,.05);
+}
+
+/* Modern target cards */
+[data-testid="stToggle"] {
+  padding-top:.25rem;
+}
+[data-testid="stToggle"] label {
+  color:#173d66;
+  font-weight:800;
+}
+
 </style>
 """
 
