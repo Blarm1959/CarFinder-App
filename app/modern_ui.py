@@ -559,6 +559,83 @@ button[kind="primary"]:hover {
   font-weight:800;
 }
 
+
+/* v3.0.7 — flatter app shell, closer to Lipfty 14 */
+[data-testid="stSidebarNav"] {
+  display:none !important;
+}
+.cf-topnav-label {
+  color:#12375f;
+  font-size:1.95rem;
+  line-height:1;
+  font-weight:850;
+  letter-spacing:-.045em;
+  margin:0 0 .65rem;
+}
+.cf-app-heading {
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  margin:.45rem 0 1rem;
+}
+.cf-app-title {
+  color:#12375f;
+  font-size:1.55rem;
+  font-weight:820;
+  letter-spacing:-.03em;
+}
+.cf-app-subtitle {
+  margin-top:.18rem;
+  color:#667586;
+  font-size:.9rem;
+}
+
+/* Navigation buttons are shallow and deliberate, like Lipfty's action bar. */
+button[kind="secondary"] {
+  background:rgba(255,255,255,.94) !important;
+}
+.stButton > button {
+  box-shadow:0 4px 12px rgba(29,56,84,.04) !important;
+}
+.stButton > button:hover {
+  box-shadow:0 8px 20px rgba(29,56,84,.08) !important;
+}
+
+/* Make choice cards cleaner: selected state is obvious without radio-dot UI. */
+div[role="radiogroup"] > label {
+  min-height:46px;
+  padding:.7rem 1rem !important;
+  border-radius:14px;
+}
+div[role="radiogroup"] > label:has(input:checked) {
+  box-shadow:inset 0 0 0 1px #2165aa;
+}
+
+/* Panels should be compact and purposeful, not form boxes. */
+[data-testid="stVerticalBlockBorderWrapper"] {
+  box-shadow:0 10px 30px rgba(29,56,84,.055) !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"] > div {
+  padding:.75rem .9rem .85rem !important;
+}
+[data-testid="stExpander"] {
+  background:rgba(255,255,255,.82) !important;
+}
+
+/* Inputs have a lighter, cleaner Lipfty field treatment. */
+[data-baseweb="input"] > div,
+[data-baseweb="select"] > div {
+  box-shadow:none !important;
+}
+input, textarea {
+  font-weight:600;
+}
+
+/* Main results page sidebar becomes a quiet utility drawer. */
+[data-testid="stSidebar"] {
+  box-shadow:inset -1px 0 0 #d7e0e8;
+}
+
 </style>
 """
 

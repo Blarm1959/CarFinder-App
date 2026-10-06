@@ -34,6 +34,19 @@ SEARCH_SCRIPT = REPO_ROOT / "scripts" / "run_search.py"
 
 st.set_page_config(page_title="Find Cars · CarFinder", layout="wide")
 
+# Find Cars is a normal app screen, not an admin page: use the full canvas.
+st.markdown(
+    """
+    <style>
+      [data-testid="stSidebar"] { display:none !important; }
+      [data-testid="collapsedControl"] { display:none !important; }
+      [data-testid="stSidebarCollapsedControl"] { display:none !important; }
+      .block-container { max-width: 1500px !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 def current_user() -> dict[str, Any]:
     return st.session_state.get("user") or {}
@@ -743,8 +756,13 @@ def render_section_navigation() -> str:
         st.session_state["find_cars_nav"] = requested
     current = st.session_state.get("find_cars_nav") or "Discovery"
 
-    c1, c2, c3 = st.columns([1, 1, 4])
-    if c1.button(
+    st.markdown("<div class='cf-topnav-label'>CarFinder</div>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns([1, 1.1, 1.1, 3.8])
+
+    if c1.button("Results", use_container_width=True, key="nav_results"):
+        st.switch_page("main.py")
+
+    if c2.button(
         "Discovery",
         type="primary" if current == "Discovery" else "secondary",
         use_container_width=True,
@@ -752,7 +770,8 @@ def render_section_navigation() -> str:
     ):
         current = "Discovery"
         st.session_state["find_cars_nav"] = current
-    if c2.button(
+
+    if c3.button(
         "My Car List",
         type="primary" if current == "My Car List" else "secondary",
         use_container_width=True,
@@ -760,7 +779,9 @@ def render_section_navigation() -> str:
     ):
         current = "My Car List"
         st.session_state["find_cars_nav"] = current
+
     return current
+
 
 
 def main() -> None:
@@ -776,12 +797,11 @@ def main() -> None:
 
     st.markdown(
         """
-        <div class="cf-hero cf-hero-compact">
-          <div class="cf-eyebrow">CarFinder</div>
-          <div class="cf-hero-title">Find a car worth buying.</div>
-          <p class="cf-hero-copy">
-            Search broadly, shortlist the car types that suit you, then let CarFinder keep watching them.
-          </p>
+        <div class="cf-app-heading">
+          <div>
+            <div class="cf-app-title">Find Cars</div>
+            <div class="cf-app-subtitle">Search broadly, then keep the car types that are worth watching.</div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,

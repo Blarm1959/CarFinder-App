@@ -322,6 +322,96 @@ def _retire_removed_target_links(conn, settings: dict[str, Any], owner: str | No
     return removed
 
 
+
+def search_source(module, car: dict[str, Any], settings: dict[str, Any],
+                  diagnostics: dict[str, Any]):
+    """Run one manufacturer search, with a robust fallback for Fuel=Any.
+
+    A few manufacturer sites return no stock (or reject the request) when the
+    fuel filter is omitted even though their fuel-specific searches work.
+    For Fuel=Any we therefore try the normal broad request first, then, only
+    if it is empty/failed, merge Petrol, Diesel, Hybrid and Electric searches.
+    """
+    wanted_fuel = str(car.get("fuel") or "Any")
+    broad_result = None
+    broad_error: Exception | None = None
+
+    try:
+        broad_result = module.search(car, settings, diagnostics)
+        broad_result.rows = [
+            row for row in broad_result.rows
+            if verified_match(row, car)
+        ]
+    except Exception as exc:
+        broad_error = exc
+        if wanted_fuel != "Any":
+            raise
+
+    if wanted_fuel != "Any":
+        return broad_result
+
+    if broad_result is not None and broad_result.rows:
+        return broad_result
+
+    merged_rows: dict[str, dict[str, Any]] = {}
+    merged_raw: set[str] = set()
+    debug_html: list[str] = []
+    debug_text: list[str] = []
+    search_urls: list[str] = []
+    successful = 0
+
+    for fuel in ("Petrol", "Diesel", "Hybrid", "Electric"):
+        specific = dict(car)
+        specific["fuel"] = fuel
+        try:
+            result = module.search(specific, settings, diagnostics)
+        except Exception:
+            continue
+
+        successful += 1
+        merged_raw.update(result.raw_regs or set())
+        if result.debug_html:
+            debug_html.append(f"<!-- {fuel} -->\n{result.debug_html}")
+        if result.debug_text:
+            debug_text.append(f"=== {fuel} ===\n{result.debug_text}")
+        if result.search_url:
+            search_urls.append(result.search_url)
+
+        for row in result.rows:
+            # Check against the original Fuel=Any effective search so every
+            # fuel is accepted while the other hard limits still apply.
+            if not verified_match(row, car):
+                continue
+            key = str(row.get("registration") or row.get("url") or "").strip()
+            if not key:
+                continue
+            merged_rows[key] = row
+
+    if successful:
+        if broad_result is None:
+            # Reuse a successful result object shape without importing or
+            # coupling the runner to the SearchResult dataclass constructor.
+            specific = dict(car)
+            specific["fuel"] = "Petrol"
+            try:
+                broad_result = module.search(specific, settings, diagnostics)
+            except Exception:
+                specific["fuel"] = "Diesel"
+                broad_result = module.search(specific, settings, diagnostics)
+
+        broad_result.rows = list(merged_rows.values())
+        broad_result.raw_regs = merged_raw
+        broad_result.debug_html = "\n".join(debug_html)
+        broad_result.debug_text = "\n".join(debug_text)
+        broad_result.search_url = " | ".join(dict.fromkeys(search_urls))
+        return broad_result
+
+    if broad_result is not None:
+        return broad_result
+    if broad_error is not None:
+        raise broad_error
+    raise RuntimeError(f"{car.get('make')}: Fuel=Any search returned no usable response")
+
 def run_search(mode: str = "targets", owner: str | None = None) -> dict[str, Any]:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
@@ -370,20 +460,20 @@ def run_search(mode: str = "targets", owner: str | None = None) -> dict[str, Any
                 continue
 
             try:
-                result = module.search(
+                result = search_source(
+                    module,
                     car,
                     search_settings_for(settings, car.get("owner") or ""),
                     diagnostics,
                 )
             except Exception as exc:
-                # One failing site must not stop the others.  Its previous
+                # One failing site must not stop the others. Its previous
                 # active links are left alone because mark_missing_not_seen
                 # is only called after a successful source response.
                 search_info.update(status="failed", message=str(exc))
                 failures.append(f"{car['name']}: {exc}")
                 continue
 
-            result.rows = [row for row in result.rows if verified_match(row, car)]
             search_info["url"] = result.search_url
             search_info["cars_found"] = len(result.rows)
             total_rows += len(result.rows)
