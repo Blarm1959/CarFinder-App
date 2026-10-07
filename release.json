@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "project": "CarFinder",
-  "version": "4.0.1",
-  "githubSource": "v4.0.1",
+  "version": "5.0.1",
+  "githubSource": "v5.0.1",
   "zipPrefix": "CarFinder-",
   "port": 0,
   "packageChanges": false,
@@ -14,6 +14,37 @@
     "defaultLanguage": "en-GB",
     "languages": [
       "en-GB"
+    ]
+  },
+  "app": {
+    "include": [
+      "index.html",
+      "css/*",
+      "css/**/*",
+      "js/*",
+      "js/**/*",
+      "assets/*",
+      "assets/**/*"
+    ],
+    "exclude": [
+      "app/*",
+      "app/**/*",
+      "admin/*",
+      "admin/**/*",
+      "config/*",
+      "config/**/*",
+      "data/*",
+      "data/**/*",
+      "scripts/*",
+      "scripts/**/*",
+      "exports/*",
+      "exports/**/*",
+      "logs/*",
+      "logs/**/*",
+      "requirements.txt",
+      "run_*.sh",
+      "run_*.ps1",
+      "bx.html"
     ]
   }
 }

@@ -1,1 +1,0 @@
-"""VW Polo tracker app."""

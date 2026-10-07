@@ -1,3 +1,0 @@
-{
-  "_note": "Superseded in CarFinder v2. Car searches (up to 10, any supported make) are set in the app under Settings. This file is no longer read and can be deleted with git rm."
-}
