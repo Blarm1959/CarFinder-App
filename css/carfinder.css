@@ -17,3 +17,9 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 .model-make{font-weight:800}
 .model-table-row input{min-height:38px}
 @media(max-width:600px){.model-table-head,.model-table-row{grid-template-columns:1fr}.model-table-head{display:none}.model-make{padding-top:4px}}
+
+/* v5.3.3 state highlighting */
+.mycar-green,.result-row.saved-hit{background:#eaf7ee}
+.unsuitable-red{background:#fdecec}
+.price-changed{color:#1565c0;font-weight:800}
+.old-price{color:var(--muted);font-weight:600}

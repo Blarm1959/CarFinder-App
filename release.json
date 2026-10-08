@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "project": "CarFinder",
-  "version": "5.3.2",
-  "githubSource": "v5.3.2",
+  "version": "5.3.3",
+  "githubSource": "v5.3.3",
   "zipPrefix": "CarFinder-",
   "port": 0,
   "packageChanges": false,
