@@ -1,6 +1,6 @@
 <!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CarFinder</title><link rel="stylesheet" href="css/carfinder.css"></head><body>
 <div id="loginView" class="auth-shell"><form id="loginForm" class="auth-card"><div class="brand-mark">CF</div><h1>CarFinder</h1><p class="muted">Enter your name to continue.</p><label>Your name<input id="loginName" autocomplete="name" required autofocus></label><button class="primary large" type="submit">Continue</button><p id="loginError" class="error hidden"></p><div id="loginChoices" class="login-choices hidden"></div></form></div>
-<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.3.1</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
+<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.3.2</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
 <nav class="main-nav"><button data-page="search" class="nav-item active">Search</button><button data-page="results" class="nav-item">Results</button><button data-page="mycars" class="nav-item">My Cars</button><button data-page="unsuitable" class="nav-item">Unsuitable</button><button data-page="settings" class="nav-item">Settings</button></nav>
 <main>
 <section id="page-search" class="page active">
@@ -8,9 +8,14 @@
 <div class="panel compact-panel">
 <div class="search-toolbar"><label>Search<select id="searchPresetSelect"><option value="">Settings defaults</option></select></label><button id="newSearchButton" class="secondary" type="button">New Search</button></div>
 <div class="compact-search-grid">
-<div class="manufacturer-field"><label>Manufacturers / models
-<input id="manufacturerModels" placeholder="Volkswagen-Golf,Passat;Skoda-Octavia,Superb">
-</label><div class="selected-line">Use <strong>;</strong> between manufacturers, <strong>-</strong> before models and <strong>,</strong> between models. A manufacturer on its own means all models.</div></div>
+<div class="manufacturer-field">
+<label>Manufacturers</label>
+<div class="manufacturer-controls">
+<details class="multi-picker"><summary id="manufacturerSummary">Choose manufacturers</summary><div id="manufacturerList" class="multi-options"></div></details>
+<button id="modelsButton" class="secondary" type="button" disabled>Models</button>
+</div>
+<input id="manufacturerModelsSummary" class="model-summary" readonly placeholder="Select manufacturers">
+</div>
 <label>Postcode<input id="searchPostcode"></label>
 <label>Fuel<select id="searchFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
 <label>Body<select id="searchBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label>
@@ -65,9 +70,14 @@
 <input id="presetId" type="hidden">
 <div class="compact-search-grid">
 <label>Search name<input id="presetName" required></label>
-<div class="manufacturer-field"><label>Manufacturers / models
-<input id="presetManufacturerModels" placeholder="Volkswagen-Golf,Passat;Skoda-Octavia,Superb">
-</label><div class="selected-line">Example: Volkswagen-Golf,Passat;Skoda-Octavia,Superb</div></div>
+<div class="manufacturer-field">
+<label>Manufacturers</label>
+<div class="manufacturer-controls">
+<details class="multi-picker"><summary id="presetManufacturerSummary">Choose manufacturers</summary><div id="presetManufacturerList" class="multi-options"></div></details>
+<button id="presetModelsButton" class="secondary" type="button" disabled>Models</button>
+</div>
+<input id="presetManufacturerModelsSummary" class="model-summary" readonly placeholder="Select manufacturers">
+</div>
 <label>Postcode<input id="presetPostcode"></label>
 <label>Fuel<select id="presetFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
 <label>Body<select id="presetBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label>
@@ -81,5 +91,14 @@
 <label>Radius<input id="presetRadius" type="number"></label>
 </div>
 <div class="form-actions"><button id="cancelPresetButton" type="button" class="secondary">Cancel</button><button type="submit" class="primary">Save search</button></div>
+</form></dialog>
+
+<dialog id="modelsDialog"><form id="modelsForm" method="dialog" class="dialog-card">
+<div class="dialog-heading"><div><h2>Models</h2><p class="muted">Leave Models blank to search all models for that manufacturer.</p></div><button id="closeModelsDialog" type="button" class="icon-button">×</button></div>
+<div class="model-table">
+<div class="model-table-head"><strong>Manufacturer</strong><strong>Models</strong></div>
+<div id="modelsRows"></div>
+</div>
+<div class="form-actions"><button id="cancelModelsButton" type="button" class="secondary">Cancel</button><button type="submit" class="primary">Save</button></div>
 </form></dialog>
 <script src="js/carfinder.js"></script></body></html>
