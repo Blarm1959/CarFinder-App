@@ -35,7 +35,7 @@ $("settingsForm").onsubmit=async e=>{e.preventDefault();settings=await api("/set
 
 async function loadPresets(){
   presets=(await api("/search-presets")).presets||[];
-  $("searchPresetSelect").innerHTML=`<option value="">Top-level defaults</option>`+presets.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  $("searchPresetSelect").innerHTML=`<option value="">Settings defaults</option>`+presets.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
   $("presetEmpty").classList.toggle("hidden",!!presets.length);
   $("presetList").innerHTML=presets.map(p=>`<div class="preset-row"><div><div class="preset-name">${esc(p.name)}</div></div><div class="preset-summary">${esc((p.manufacturers||[]).join(", ")||"No manufacturers")} · ${esc(p.body_type||"Any body")} · ${p.min_price!=null?`£${Number(p.min_price).toLocaleString()}+`:"Any price"} · ${p.radius_miles||50} miles</div><div class="preset-actions"><button class="secondary" onclick="editPreset(${p.id})">Edit</button><button class="danger" onclick="deletePreset(${p.id})">Delete</button></div></div>`).join("");
 }
@@ -54,14 +54,14 @@ $("newSearchButton").onclick=()=>newSearch(false);
 function searchPayload(){return{manufacturers:chosen("manufacturerList"),postcode:$("searchPostcode").value,fuel:$("searchFuel").value||null,body_type:$("searchBody").value||null,transmission:$("searchGearbox").value||null,min_price:num($("searchMinPrice").value),max_price:num($("searchMaxPrice").value),max_mileage:num($("searchMileage").value),min_year:num($("searchYear").value),seats:num($("searchSeats").value),min_power_bhp:num($("searchPower").value),radius_miles:num($("searchRadius").value)||50}}
 $("startSearchButton").onclick=async()=>{const box=$("searchStatus"),btn=$("startSearchButton");box.classList.remove("hidden");box.textContent="Searching live manufacturer stock…";btn.disabled=true;try{const r=await api("/search/start",{method:"POST",body:JSON.stringify(searchPayload())});box.textContent=r.message+(r.failures?.length?` Problems: ${r.failures.join(" | ")}`:"");await Promise.all([loadResults(),loadMyCars()]);if(r.status==="complete")page("results")}catch(e){box.textContent=e.message}finally{btn.disabled=false}};
 
-$("addPresetButton").onclick=async()=>{const name=prompt("Name for the new saved search:");if(!name)return;const p=await api("/search-presets",{method:"POST",body:JSON.stringify({name})});await loadPresets();openPreset(p)};
+$("addPresetButton").onclick=async()=>{const name=prompt("Name for the new Search:");if(!name)return;const p=await api("/search-presets",{method:"POST",body:JSON.stringify({name})});await loadPresets();openPreset(p)};
 function openPreset(p){
-  $("presetId").value=p.id;$("presetDialogTitle").textContent="Edit saved search";val("presetName",p.name);renderMakerBox("presetManufacturerList","presetManufacturerSummary","presetManufacturerSelected",p.manufacturers||[]);
+  $("presetId").value=p.id;$("presetDialogTitle").textContent="Edit Search";val("presetName",p.name);renderMakerBox("presetManufacturerList","presetManufacturerSummary","presetManufacturerSelected",p.manufacturers||[]);
   for(const [id,k] of [["presetPostcode","postcode"],["presetFuel","fuel"],["presetBody","body_type"],["presetGearbox","transmission"],["presetMinPrice","min_price"],["presetMaxPrice","max_price"],["presetMaxMileage","max_mileage"],["presetMinYear","min_year"],["presetSeats","min_seats"],["presetPower","min_power_bhp"],["presetRadius","radius_miles"]])val(id,p[k]);
   $("presetDialog").showModal();
 }
 window.editPreset=id=>openPreset(presets.find(p=>p.id===id));
-window.deletePreset=async id=>{if(confirm("Delete this saved search?")){await api(`/search-presets/${id}`,{method:"DELETE"});await loadPresets()}};
+window.deletePreset=async id=>{if(confirm("Delete this Search?")){await api(`/search-presets/${id}`,{method:"DELETE"});await loadPresets()}};
 $("closePresetDialog").onclick=()=>$("presetDialog").close();$("cancelPresetButton").onclick=()=>$("presetDialog").close();
 $("presetForm").onsubmit=async e=>{e.preventDefault();const id=+$("presetId").value;const payload={name:$("presetName").value,manufacturers:chosen("presetManufacturerList"),postcode:$("presetPostcode").value,fuel:$("presetFuel").value||null,body_type:$("presetBody").value||null,transmission:$("presetGearbox").value||null,min_price:num($("presetMinPrice").value),max_price:num($("presetMaxPrice").value),max_mileage:num($("presetMaxMileage").value),min_year:num($("presetMinYear").value),min_seats:num($("presetSeats").value),min_power_bhp:num($("presetPower").value),radius_miles:num($("presetRadius").value)||50};await api(`/search-presets/${id}`,{method:"PUT",body:JSON.stringify(payload)});$("presetDialog").close();await loadPresets()};
 

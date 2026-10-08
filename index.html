@@ -1,12 +1,12 @@
 <!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CarFinder</title><link rel="stylesheet" href="css/carfinder.css"></head><body>
 <div id="loginView" class="auth-shell"><form id="loginForm" class="auth-card"><div class="brand-mark">CF</div><h1>CarFinder</h1><p class="muted">Enter your name to continue.</p><label>Your name<input id="loginName" autocomplete="name" required autofocus></label><button class="primary large" type="submit">Continue</button><p id="loginError" class="error hidden"></p><div id="loginChoices" class="login-choices hidden"></div></form></div>
-<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.2.1</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
+<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.2.2</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
 <nav class="main-nav"><button data-page="search" class="nav-item active">Search</button><button data-page="results" class="nav-item">Results</button><button data-page="mycars" class="nav-item">My Cars</button><button data-page="unsuitable" class="nav-item">Unsuitable</button><button data-page="settings" class="nav-item">Settings</button></nav>
 <main>
 <section id="page-search" class="page active">
 <div class="compact-heading"><div><div class="eyebrow">Search</div><h1>Find cars</h1></div></div>
 <div class="panel compact-panel">
-<div class="search-toolbar"><label>Saved search<select id="searchPresetSelect"><option value="">Top-level defaults</option></select></label><button id="newSearchButton" class="secondary" type="button">New Search</button></div>
+<div class="search-toolbar"><label>Search<select id="searchPresetSelect"><option value="">Settings defaults</option></select></label><button id="newSearchButton" class="secondary" type="button">New Search</button></div>
 <div class="compact-search-grid">
 <div class="manufacturer-field"><label>Manufacturers</label><details class="multi-picker"><summary id="manufacturerSummary">Choose manufacturers</summary><div id="manufacturerList" class="multi-options"></div></details><div class="selected-line"><strong>Selected:</strong> <span id="manufacturerSelected">None</span></div></div>
 <label>Postcode<input id="searchPostcode"></label>
@@ -31,9 +31,9 @@
 <section id="page-unsuitable" class="page"><div class="compact-heading"><div><div class="eyebrow">Unsuitable</div><h1>Hidden cars</h1><p class="muted">These registrations will not appear in future Results.</p></div></div><div id="unsuitableList" class="simple-list"></div><div id="unsuitableEmpty" class="empty-state"><h2>No unsuitable cars</h2></div></section>
 
 <section id="page-settings" class="page">
-<div class="compact-heading"><div><div class="eyebrow">Settings</div><h1>Your settings</h1><p class="muted">Top-level defaults apply to every new search unless a saved search overrides them.</p></div></div>
+<div class="compact-heading"><div><div class="eyebrow">Settings</div><h1>Your settings</h1><p class="muted">Settings defaults apply to every new search unless a saved search overrides them.</p></div></div>
 <form id="settingsForm" class="panel compact-panel">
-<h2>Top-level defaults</h2>
+<h2>Settings defaults</h2>
 <div class="compact-search-grid">
 <label>Postcode<input id="settingsPostcode"></label>
 <label>Fuel<select id="settingsFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
@@ -51,15 +51,15 @@
 </form>
 
 <div class="panel compact-panel">
-<div class="panel-title-row"><div><h2>Saved searches</h2><p class="muted">Each saved search starts as a copy of the top-level defaults.</p></div><button id="addPresetButton" class="primary" type="button">Add saved search</button></div>
+<div class="panel-title-row"><div><h2>Searches</h2><p class="muted">Each Search starts as a copy of Settings, then you can choose manufacturers and override anything you need.</p></div><button id="addPresetButton" class="primary" type="button">Add Search</button></div>
 <div id="presetList" class="preset-list"></div>
-<div id="presetEmpty" class="empty-state"><h3>No saved searches yet</h3></div>
+<div id="presetEmpty" class="empty-state"><h3>No Searches yet</h3></div>
 </div>
 </section>
 </main></div>
 
 <dialog id="presetDialog"><form id="presetForm" method="dialog" class="dialog-card">
-<div class="dialog-heading"><h2 id="presetDialogTitle">Saved search</h2><button id="closePresetDialog" type="button" class="icon-button">×</button></div>
+<div class="dialog-heading"><h2 id="presetDialogTitle">Search</h2><button id="closePresetDialog" type="button" class="icon-button">×</button></div>
 <input id="presetId" type="hidden">
 <div class="compact-search-grid">
 <label>Search name<input id="presetName" required></label>
