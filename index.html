@@ -1,7 +1,7 @@
 <!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CarFinder</title><link rel="stylesheet" href="css/carfinder.css"></head><body>
 <div id="loginView" class="auth-shell"><form id="loginForm" class="auth-card"><div class="brand-mark">CF</div><h1>CarFinder</h1><p class="muted">Enter your name to continue.</p><label>Your name<input id="loginName" autocomplete="name" required autofocus></label><button class="primary large" type="submit">Continue</button><p id="loginError" class="error hidden"></p><div id="loginChoices" class="login-choices hidden"></div></form></div>
-<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.3.3</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
-<nav class="main-nav"><button data-page="search" class="nav-item active">Search</button><button data-page="results" class="nav-item">Results</button><button data-page="mycars" class="nav-item">My Cars</button><button data-page="unsuitable" class="nav-item">Unsuitable</button><button data-page="settings" class="nav-item">Settings</button></nav>
+<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.4.1</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
+<nav class="main-nav"><button data-page="search" class="nav-item active">Search</button><button data-page="results" class="nav-item">Results</button><button data-page="mycars" class="nav-item">My Cars</button><button data-page="sold" class="nav-item">Sold</button><button data-page="unsuitable" class="nav-item">Unsuitable</button><button data-page="settings" class="nav-item">Settings</button></nav>
 <main>
 <section id="page-search" class="page active">
 <div class="compact-heading"><div><div class="eyebrow">Search</div><h1>Find cars</h1></div></div>
@@ -33,8 +33,16 @@
 <div id="searchStatus" class="notice hidden"></div>
 </section>
 
-<section id="page-results" class="page"><div class="compact-heading"><div><div class="eyebrow">Results</div><h1>Search results</h1><p class="muted">Interested cars go into My Cars. Unsuitable cars stay hidden.</p></div></div><div id="resultList" class="result-list"></div><div id="resultsEmpty" class="empty-state"><h2>No results yet</h2><p>Run a Search first.</p></div></section>
-<section id="page-mycars" class="page"><div class="compact-heading"><div><div class="eyebrow">My Cars</div><h1>Saved cars</h1><p class="muted">Latest details, original price and family notes.</p></div></div><div id="myCarsList" class="saved-list"></div><div id="myCarsEmpty" class="empty-state"><h2>No cars saved yet</h2><p>Choose Interested on a result.</p></div></section>
+<section id="page-results" class="page">
+<div class="compact-heading"><div><div class="eyebrow">Results</div><h1>Search results</h1><p class="muted">Work through unreviewed cars, or switch views to see everything or My Cars.</p></div></div>
+<div class="results-controls panel compact-panel">
+<div class="result-view-buttons"><button id="viewAll" class="secondary" type="button">All</button><button id="viewUnreviewed" class="primary" type="button">New / Unreviewed</button><button id="viewMyCars" class="secondary" type="button">My Cars</button></div>
+<div class="result-sort"><label>Sort by<select id="resultSort"><option value="price">Price</option><option value="model">Model</option><option value="distance">Distance</option><option value="dealer">Dealer</option><option value="year">Year</option><option value="mileage">Mileage</option></select></label><button id="sortDirection" class="secondary" type="button">↑</button></div>
+<div id="resultCounts" class="muted"></div>
+</div>
+<div id="resultList" class="result-list"></div><div id="resultsEmpty" class="empty-state"><h2>No results in this view</h2><p>Run a Search or choose another view.</p></div></section>
+<section id="page-mycars" class="page"><div class="compact-heading"><div><div class="eyebrow">My Cars</div><h1>Saved cars</h1><p class="muted">Green cars are available. Purple cars have been marked Sold.</p></div></div><div id="myCarsList" class="saved-list"></div><div id="myCarsEmpty" class="empty-state"><h2>No cars saved yet</h2><p>Choose Interested on a result.</p></div></section>
+<section id="page-sold" class="page"><div class="compact-heading"><div><div class="eyebrow">Sold</div><h1>Sold cars</h1><p class="muted">Cars you have marked Sold. Use Available if one comes back onto the market.</p></div></div><div id="soldList" class="saved-list"></div><div id="soldEmpty" class="empty-state"><h2>No sold cars</h2></div></section>
 <section id="page-unsuitable" class="page"><div class="compact-heading"><div><div class="eyebrow">Unsuitable</div><h1>Hidden cars</h1><p class="muted">These registrations will not appear in future Results.</p></div></div><div id="unsuitableList" class="simple-list"></div><div id="unsuitableEmpty" class="empty-state"><h2>No unsuitable cars</h2></div></section>
 
 <section id="page-settings" class="page">

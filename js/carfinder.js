@@ -1,4 +1,4 @@
-const API="/api/v1",$=id=>document.getElementById(id);let manufacturers=[],profiles=[],currentProfile=null,presets=[],settings={},searchModels={},presetModels={},modelEditorTarget="search";
+const API="/api/v1",$=id=>document.getElementById(id);let manufacturers=[],profiles=[],currentProfile=null,presets=[],settings={},searchModels={},presetModels={},modelEditorTarget="search",resultRows=[],resultView="unreviewed",resultSort="price",resultAsc=true;
 async function api(path,options={}){const r=await fetch(API+path,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...options});let body={};try{body=await r.json()}catch{}if(r.status===401){showLogin();throw Error(body.detail||"Choose your name")}if(!r.ok)throw Error(body.detail||`Request failed (${r.status})`);return body}
 async function loadVersion(){try{const r=await fetch("/build-info.json",{cache:"no-store"});if(r.ok){const b=await r.json(),v=b.version||b.tag;if(v)$("versionButton").textContent=String(v).startsWith("v")?v:`v${v}`}}catch{}}
 function showLogin(){$("loginView").classList.remove("hidden");$("appView").classList.add("hidden")}function showApp(){$("loginView").classList.add("hidden");$("appView").classList.remove("hidden")}function page(name){document.querySelectorAll(".page").forEach(x=>x.classList.toggle("active",x.id===`page-${name}`));document.querySelectorAll(".nav-item").forEach(x=>x.classList.toggle("active",x.dataset.page===name));scrollTo(0,0)}
@@ -11,7 +11,7 @@ async function boot(){
     const [pr,m]=await Promise.all([api("/profiles"),api("/reference/manufacturers")]);
     profiles=pr.profiles||[];manufacturers=m.manufacturers||[];renderProfiles();
     await loadSettings();await loadPresets();await newSearch(true);
-    await Promise.all([loadResults(),loadMyCars(),loadUnsuitable()]);
+    await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);
   }catch{showLogin()}
 }
 function renderProfiles(){$("profileSelect").innerHTML=profiles.map(p=>`<option value="${p.id}" ${p.id===currentProfile.id?"selected":""}>${esc(p.name)}</option>`).join("")}
@@ -142,19 +142,65 @@ function priceText(v){
   return current;
 }
 function facts(v){return[priceText(v),v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}
-function resultRow(v){return`<article class="result-row ${v.in_my_cars?"saved-hit":""}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.in_my_cars?' · <span class="saved-label">IN MY CARS</span>':""}</div></div><div class="facts">${facts(v)}</div><div class="row-actions">${v.in_my_cars?"":`<button class="primary" onclick="addMyCar(${v.id})">Interested</button>`}<button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>${v.url?`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`:""}</div></div></article>`}
-async function loadResults(){const a=(await api("/results")).results||[];$("resultsEmpty").classList.toggle("hidden",!!a.length);$("resultList").innerHTML=a.map(resultRow).join("")}
-window.addMyCar=async id=>{await api(`/my-cars/${id}`,{method:"POST"});await Promise.all([loadResults(),loadMyCars()])};window.rejectCar=async id=>{await api(`/unsuitable/${id}`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadUnsuitable()])};
+function resultRow(v){
+  const state=v.sold?"sold-hit":(v.in_my_cars?"saved-hit":"");
+  let actions="";
+  if(v.sold)actions=`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`;
+  else if(!v.in_my_cars)actions=`<button class="primary" onclick="addMyCar(${v.id})">Interested</button><button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>`;
+  else actions=`<button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>`;
+  if(v.url)actions+=`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`;
+  return `<article class="result-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.sold?' · <span class="sold-label">SOLD</span>':(v.in_my_cars?' · <span class="saved-label">IN MY CARS</span>':"")}</div></div><div class="facts">${facts(v)}</div><div class="row-actions">${actions}</div></div></article>`;
+}
+function sortValue(v,key){
+  if(key==="model")return `${v.make||""} ${v.model||""}`.toLowerCase();
+  if(key==="dealer")return String(v.dealer_name||"").toLowerCase();
+  if(key==="distance")return v.distance_miles==null?Number.POSITIVE_INFINITY:Number(v.distance_miles);
+  if(key==="year")return v.year==null?0:Number(v.year);
+  if(key==="mileage")return v.mileage==null?Number.POSITIVE_INFINITY:Number(v.mileage);
+  return v.price==null?Number.POSITIVE_INFINITY:Number(v.price);
+}
+function renderResults(){
+  let a=[...resultRows];
+  if(resultView==="unreviewed")a=a.filter(v=>!v.in_my_cars);
+  if(resultView==="mycars")a=a.filter(v=>v.in_my_cars);
+  a.sort((x,y)=>{
+    const ax=sortValue(x,resultSort),ay=sortValue(y,resultSort);
+    let c=typeof ax==="string"?ax.localeCompare(ay):ax-ay;
+    return resultAsc?c:-c;
+  });
+  const unreviewed=resultRows.filter(v=>!v.in_my_cars).length,my=resultRows.filter(v=>v.in_my_cars).length;
+  $("resultCounts").textContent=`${resultRows.length} results · ${unreviewed} unreviewed · ${my} My Cars`;
+  $("resultsEmpty").classList.toggle("hidden",!!a.length);
+  $("resultList").innerHTML=a.map(resultRow).join("");
+  for(const [id,view] of [["viewAll","all"],["viewUnreviewed","unreviewed"],["viewMyCars","mycars"]]){
+    $(id).className=resultView===view?"primary":"secondary";
+  }
+}
+async function loadResults(){resultRows=(await api("/results")).results||[];renderResults()}
+$("viewAll").onclick=()=>{resultView="all";renderResults()};
+$("viewUnreviewed").onclick=()=>{resultView="unreviewed";renderResults()};
+$("viewMyCars").onclick=()=>{resultView="mycars";renderResults()};
+$("resultSort").onchange=e=>{resultSort=e.target.value;renderResults()};
+$("sortDirection").onclick=()=>{resultAsc=!resultAsc;$("sortDirection").textContent=resultAsc?"↑":"↓";renderResults()};
+window.addMyCar=async id=>{await api(`/my-cars/${id}`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};
+window.rejectCar=async id=>{await api(`/unsuitable/${id}`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()])};
+window.makeAvailable=async id=>{await api(`/my-cars/${id}/available`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};
+window.markSold=async id=>{await api(`/my-cars/${id}/sold`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};
 
-function myCarRow(v){
+function myCarRow(v,fromSold=false){
   const changed=v.initial_price!=null&&v.price!=null&&Number(v.price)!==Number(v.initial_price);
   const price=v.price==null?"Price unknown":changed
     ?`<span class="price-changed">£${Number(v.price).toLocaleString()}</span> <span class="old-price">(£${Number(v.initial_price).toLocaleString()})</span>`
     :`£${Number(v.price).toLocaleString()}`;
-  return `<article class="saved-row mycar-green"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)} · Added by ${esc(v.added_by||"family")}</div></div><div class="facts">${[price,v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}</div><div class="row-actions">${v.url?`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`:""}<button class="danger" onclick="removeMyCar(${v.id})">Remove</button></div></div><div class="notes-block"><textarea id="my-note-${v.id}" placeholder="Family notes">${esc(v.notes||"")}</textarea><button class="secondary" onclick="saveNote(${v.id})">Save note</button></div></article>`;
+  const state=v.sold?"sold-purple":"mycar-green";
+  let actions=v.url?`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`:"";
+  actions+=v.sold?`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`:`<button class="secondary" onclick="markSold(${v.id})">Sold</button>`;
+  if(!fromSold)actions+=`<button class="danger" onclick="removeMyCar(${v.id})">Remove</button>`;
+  return `<article class="saved-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.year?` · ${v.year}`:""} · Added by ${esc(v.added_by||"family")}${v.sold?' · SOLD':""}</div></div><div class="facts">${[price,v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}</div><div class="row-actions">${actions}</div></div>${fromSold?"":`<div class="notes-block"><textarea id="my-note-${v.id}" placeholder="Family notes">${esc(v.notes||"")}</textarea><button class="secondary" onclick="saveNote(${v.id})">Save note</button></div>`}</article>`;
 }
-async function loadMyCars(){const a=(await api("/my-cars")).cars||[];$("myCarsEmpty").classList.toggle("hidden",!!a.length);$("myCarsList").innerHTML=a.map(myCarRow).join("")}
-window.removeMyCar=async id=>{if(confirm("Remove this car from My Cars?")){await api(`/my-cars/${id}`,{method:"DELETE"});await Promise.all([loadMyCars(),loadResults()])}};window.saveNote=async id=>{await api(`/my-cars/${id}/notes`,{method:"PUT",body:JSON.stringify({notes:$(`my-note-${id}`).value})})};
+async function loadMyCars(){const a=(await api("/my-cars")).cars||[];$("myCarsEmpty").classList.toggle("hidden",!!a.length);$("myCarsList").innerHTML=a.map(v=>myCarRow(v,false)).join("")}
+async function loadSold(){const a=(await api("/sold")).cars||[];$("soldEmpty").classList.toggle("hidden",!!a.length);$("soldList").innerHTML=a.map(v=>myCarRow(v,true)).join("")}
+window.removeMyCar=async id=>{if(confirm("Remove this car from My Cars?")){await api(`/my-cars/${id}`,{method:"DELETE"});await Promise.all([loadMyCars(),loadSold(),loadResults()])}};window.saveNote=async id=>{await api(`/my-cars/${id}/notes`,{method:"PUT",body:JSON.stringify({notes:$(`my-note-${id}`).value})})};
 
 async function loadUnsuitable(){
   const a=(await api("/unsuitable")).cars||[];

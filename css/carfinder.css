@@ -23,3 +23,12 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 .unsuitable-red{background:#fdecec}
 .price-changed{color:#1565c0;font-weight:800}
 .old-price{color:var(--muted);font-weight:600}
+
+/* v5.4.1 review workflow */
+.results-controls{display:grid;grid-template-columns:auto auto 1fr;gap:14px;align-items:end;margin-bottom:14px}
+.result-view-buttons{display:flex;gap:8px;flex-wrap:wrap}
+.result-sort{display:flex;gap:8px;align-items:end}
+.result-sort label{min-width:150px}
+.sold-purple,.result-row.sold-hit{background:#f2eafb}
+.sold-label{font-weight:800;color:#6b3fa0}
+@media(max-width:760px){.results-controls{grid-template-columns:1fr}.result-sort{align-items:end}}
