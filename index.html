@@ -1,13 +1,81 @@
 <!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CarFinder</title><link rel="stylesheet" href="css/carfinder.css"></head><body>
 <div id="loginView" class="auth-shell"><form id="loginForm" class="auth-card"><div class="brand-mark">CF</div><h1>CarFinder</h1><p class="muted">Enter your name to continue.</p><label>Your name<input id="loginName" autocomplete="name" required autofocus></label><button class="primary large" type="submit">Continue</button><p id="loginError" class="error hidden"></p><div id="loginChoices" class="login-choices hidden"></div></form></div>
-<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.1.2</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
-<nav class="main-nav"><button data-page="discovery" class="nav-item active">Discovery</button><button data-page="results" class="nav-item">Results</button><button data-page="mycars" class="nav-item">My Cars</button><button data-page="unsuitable" class="nav-item">Unsuitable</button><button data-page="settings" class="nav-item">Settings</button></nav>
+<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.2.1</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
+<nav class="main-nav"><button data-page="search" class="nav-item active">Search</button><button data-page="results" class="nav-item">Results</button><button data-page="mycars" class="nav-item">My Cars</button><button data-page="unsuitable" class="nav-item">Unsuitable</button><button data-page="settings" class="nav-item">Settings</button></nav>
 <main>
-<section id="page-discovery" class="page active"><div class="compact-heading"><div><div class="eyebrow">Discovery</div><h1>Find cars</h1></div></div><form id="discoveryForm" class="panel compact-panel"><div class="compact-search-grid"><div class="manufacturer-field"><label>Manufacturers</label><details class="multi-picker"><summary id="manufacturerSummary">Choose manufacturers</summary><div id="manufacturerList" class="multi-options"></div></details><div class="selected-line"><strong>Selected:</strong> <span id="manufacturerSelected">None</span></div></div><label>Fuel<select id="discoveryFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label><label>Body<select id="discoveryBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label><label>Gearbox<select id="discoveryGearbox"><option value="">Any</option><option>Automatic</option><option>Manual</option></select></label><label>Min price<input id="discoveryMinPrice" type="number" step="500"></label><label>Max price<input id="discoveryMaxPrice" type="number" step="500"></label><label>Max mileage<input id="discoveryMileage" type="number" step="1000"></label><label>Min year<input id="discoveryYear" type="number"></label><label>Min seats<input id="discoverySeats" type="number"></label><label>Min power<input id="discoveryPower" type="number" step="5"></label><label>Radius<input id="discoveryRadius" type="number"></label></div><div class="form-actions"><button class="secondary" type="submit">Save search</button><button id="clearSearchButton" class="secondary" type="button">Clear Search</button><button id="startSearchButton" class="primary" type="button">Search now</button><span id="discoverySaved" class="saved-indicator"></span></div></form><div id="searchStatus" class="notice hidden"></div></section>
+<section id="page-search" class="page active">
+<div class="compact-heading"><div><div class="eyebrow">Search</div><h1>Find cars</h1></div></div>
+<div class="panel compact-panel">
+<div class="search-toolbar"><label>Saved search<select id="searchPresetSelect"><option value="">Top-level defaults</option></select></label><button id="newSearchButton" class="secondary" type="button">New Search</button></div>
+<div class="compact-search-grid">
+<div class="manufacturer-field"><label>Manufacturers</label><details class="multi-picker"><summary id="manufacturerSummary">Choose manufacturers</summary><div id="manufacturerList" class="multi-options"></div></details><div class="selected-line"><strong>Selected:</strong> <span id="manufacturerSelected">None</span></div></div>
+<label>Postcode<input id="searchPostcode"></label>
+<label>Fuel<select id="searchFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
+<label>Body<select id="searchBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label>
+<label>Gearbox<select id="searchGearbox"><option value="">Any</option><option>Automatic</option><option>Manual</option></select></label>
+<label>Min price<input id="searchMinPrice" type="number" step="500"></label>
+<label>Max price<input id="searchMaxPrice" type="number" step="500"></label>
+<label>Max mileage<input id="searchMileage" type="number" step="1000"></label>
+<label>Min year<input id="searchYear" type="number"></label>
+<label>Min seats<input id="searchSeats" type="number"></label>
+<label>Min power<input id="searchPower" type="number" step="5"></label>
+<label>Radius<input id="searchRadius" type="number"></label>
+</div>
+<div class="form-actions"><button id="startSearchButton" class="primary" type="button">Search now</button></div>
+</div>
+<div id="searchStatus" class="notice hidden"></div>
+</section>
 
-<section id="page-results" class="page"><div class="compact-heading"><div><div class="eyebrow">Results</div><h1>Search results</h1><p class="muted">Interested cars go into My Cars. Unsuitable cars stay hidden from future results.</p></div></div><div id="resultList" class="result-list"></div><div id="resultsEmpty" class="empty-state"><h2>No results yet</h2><p>Run a Discovery search first.</p></div></section>
-<section id="page-mycars" class="page"><div class="compact-heading"><div><div class="eyebrow">My Cars</div><h1>Saved cars</h1><p class="muted">Latest details, original price and family notes.</p></div></div><div id="myCarsList" class="saved-list"></div><div id="myCarsEmpty" class="empty-state"><h2>No cars saved yet</h2><p>Choose Interested on a search result.</p></div></section>
+<section id="page-results" class="page"><div class="compact-heading"><div><div class="eyebrow">Results</div><h1>Search results</h1><p class="muted">Interested cars go into My Cars. Unsuitable cars stay hidden.</p></div></div><div id="resultList" class="result-list"></div><div id="resultsEmpty" class="empty-state"><h2>No results yet</h2><p>Run a Search first.</p></div></section>
+<section id="page-mycars" class="page"><div class="compact-heading"><div><div class="eyebrow">My Cars</div><h1>Saved cars</h1><p class="muted">Latest details, original price and family notes.</p></div></div><div id="myCarsList" class="saved-list"></div><div id="myCarsEmpty" class="empty-state"><h2>No cars saved yet</h2><p>Choose Interested on a result.</p></div></section>
 <section id="page-unsuitable" class="page"><div class="compact-heading"><div><div class="eyebrow">Unsuitable</div><h1>Hidden cars</h1><p class="muted">These registrations will not appear in future Results.</p></div></div><div id="unsuitableList" class="simple-list"></div><div id="unsuitableEmpty" class="empty-state"><h2>No unsuitable cars</h2></div></section>
 
-<section id="page-settings" class="page"><div class="compact-heading"><div><div class="eyebrow">Settings</div><h1>Your default search</h1><p class="muted">These defaults are stored separately for each family profile and loaded whenever a new search is cleared.</p></div></div><form id="settingsForm" class="panel compact-panel"><div class="compact-search-grid"><div class="manufacturer-field"><label>Default manufacturers</label><details class="multi-picker"><summary id="settingsManufacturerSummary">Choose manufacturers</summary><div id="settingsManufacturerList" class="multi-options"></div></details><div class="selected-line"><strong>Selected:</strong> <span id="settingsManufacturerSelected">None</span></div></div><label>Postcode<input id="settingsPostcode"></label><label>Fuel<select id="settingsFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label><label>Body<select id="settingsBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label><label>Gearbox<select id="settingsGearbox"><option value="">Any</option><option>Automatic</option><option>Manual</option></select></label><label>Min price<input id="settingsMinPrice" type="number" step="500"></label><label>Max price<input id="settingsMaxPrice" type="number" step="500"></label><label>Max mileage<input id="settingsMaxMileage" type="number" step="1000"></label><label>Min year<input id="settingsMinYear" type="number"></label><label>Min seats<input id="settingsSeats" type="number"></label><label>Min power<input id="settingsPower" type="number" step="5"></label><label>Default radius<input id="settingsRadius" type="number"></label></div><div class="form-actions"><button class="primary" type="submit">Save defaults</button><span id="settingsSaved" class="saved-indicator"></span></div></form></section>
-</main></div><script src="js/carfinder.js"></script></body></html>
+<section id="page-settings" class="page">
+<div class="compact-heading"><div><div class="eyebrow">Settings</div><h1>Your settings</h1><p class="muted">Top-level defaults apply to every new search unless a saved search overrides them.</p></div></div>
+<form id="settingsForm" class="panel compact-panel">
+<h2>Top-level defaults</h2>
+<div class="compact-search-grid">
+<label>Postcode<input id="settingsPostcode"></label>
+<label>Fuel<select id="settingsFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
+<label>Body<select id="settingsBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label>
+<label>Gearbox<select id="settingsGearbox"><option value="">Any</option><option>Automatic</option><option>Manual</option></select></label>
+<label>Min price<input id="settingsMinPrice" type="number" step="500"></label>
+<label>Max price<input id="settingsMaxPrice" type="number" step="500"></label>
+<label>Max mileage<input id="settingsMaxMileage" type="number" step="1000"></label>
+<label>Min year<input id="settingsMinYear" type="number"></label>
+<label>Min seats<input id="settingsSeats" type="number"></label>
+<label>Min power<input id="settingsPower" type="number" step="5"></label>
+<label>Default radius<input id="settingsRadius" type="number"></label>
+</div>
+<div class="form-actions"><button class="primary" type="submit">Save defaults</button><span id="settingsSaved" class="saved-indicator"></span></div>
+</form>
+
+<div class="panel compact-panel">
+<div class="panel-title-row"><div><h2>Saved searches</h2><p class="muted">Each saved search starts as a copy of the top-level defaults.</p></div><button id="addPresetButton" class="primary" type="button">Add saved search</button></div>
+<div id="presetList" class="preset-list"></div>
+<div id="presetEmpty" class="empty-state"><h3>No saved searches yet</h3></div>
+</div>
+</section>
+</main></div>
+
+<dialog id="presetDialog"><form id="presetForm" method="dialog" class="dialog-card">
+<div class="dialog-heading"><h2 id="presetDialogTitle">Saved search</h2><button id="closePresetDialog" type="button" class="icon-button">×</button></div>
+<input id="presetId" type="hidden">
+<div class="compact-search-grid">
+<label>Search name<input id="presetName" required></label>
+<div class="manufacturer-field"><label>Manufacturers</label><details class="multi-picker"><summary id="presetManufacturerSummary">Choose manufacturers</summary><div id="presetManufacturerList" class="multi-options"></div></details><div class="selected-line"><strong>Selected:</strong> <span id="presetManufacturerSelected">None</span></div></div>
+<label>Postcode<input id="presetPostcode"></label>
+<label>Fuel<select id="presetFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
+<label>Body<select id="presetBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label>
+<label>Gearbox<select id="presetGearbox"><option value="">Any</option><option>Automatic</option><option>Manual</option></select></label>
+<label>Min price<input id="presetMinPrice" type="number" step="500"></label>
+<label>Max price<input id="presetMaxPrice" type="number" step="500"></label>
+<label>Max mileage<input id="presetMaxMileage" type="number" step="1000"></label>
+<label>Min year<input id="presetMinYear" type="number"></label>
+<label>Min seats<input id="presetSeats" type="number"></label>
+<label>Min power<input id="presetPower" type="number" step="5"></label>
+<label>Radius<input id="presetRadius" type="number"></label>
+</div>
+<div class="form-actions"><button id="cancelPresetButton" type="button" class="secondary">Cancel</button><button type="submit" class="primary">Save search</button></div>
+</form></dialog>
+<script src="js/carfinder.js"></script></body></html>
