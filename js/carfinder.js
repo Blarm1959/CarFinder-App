@@ -97,7 +97,16 @@ async function newSearch(first=false){
   $("searchName").value="";
   applySearch(await api("/search/base"));
   $("searchStatus").classList.add("hidden");
-  if(!first)page("search");
+  $("newSearchReady").classList.add("hidden");
+  if(!first){
+    page("search");
+    requestAnimationFrame(()=>{
+      $("newSearchPanel").scrollIntoView({behavior:"smooth",block:"start"});
+      $("newSearchReady").classList.remove("hidden");
+      setTimeout(()=>$("newSearchReady").classList.add("hidden"),2200);
+      $("searchName").focus({preventScroll:true});
+    });
+  }
 }
 $("newSearchButton").onclick=()=>newSearch(false);
 function searchPayload(){return{manufacturer_models:formatManufacturerModels(searchModels),postcode:$("searchPostcode").value,fuel:$("searchFuel").value||null,body_type:$("searchBody").value||null,transmission:$("searchGearbox").value||null,colours:selectedColours("searchColourList"),min_price:num($("searchMinPrice").value),max_price:num($("searchMaxPrice").value),max_mileage:num($("searchMileage").value),min_year:num($("searchYear").value),seats:num($("searchSeats").value),min_power_bhp:num($("searchPower").value),radius_miles:num($("searchRadius").value)}}

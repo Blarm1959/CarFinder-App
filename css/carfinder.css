@@ -58,3 +58,7 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 .search-list-busy .preset-row{background:#f4f5f7}
 .search-list-busy button:disabled{background:#eef0f3!important;color:#8a929d!important;border-color:#d8dde4!important;opacity:1}
 @media(max-width:760px){.result-counts{margin-top:4px}}
+
+/* v5.5.4 New Search feedback */
+#newSearchPanel{scroll-margin-top:150px}
+#newSearchReady{margin-top:4px}
