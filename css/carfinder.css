@@ -65,3 +65,9 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 
 /* v5.5.5 live search progress */
 #searchRunningDetail,#presetSearchRunningName{font-variant-numeric:tabular-nums}
+
+/* v5.5.6 New Search popup */
+#newSearchDialog{width:min(1160px,calc(100% - 28px))}
+#newSearchDialog .dialog-card{padding:22px}
+#newSearchDialog::backdrop{background:rgba(24,32,42,.38);backdrop-filter:blur(2px)}
+#newSearchDialog .compact-search-grid{margin-top:8px}

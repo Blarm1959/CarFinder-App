@@ -1,6 +1,6 @@
 <!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CarFinder</title><link rel="stylesheet" href="css/carfinder.css"></head><body>
 <div id="loginView" class="auth-shell"><form id="loginForm" class="auth-card"><div class="brand-mark">CF</div><h1>CarFinder</h1><p class="muted">Enter your name to continue.</p><label>Your name<input id="loginName" autocomplete="name" required autofocus></label><button class="primary large" type="submit">Continue</button><p id="loginError" class="error hidden"></p><div id="loginChoices" class="login-choices hidden"></div></form></div>
-<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.5.5</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
+<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.5.6</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
 <nav class="main-nav"><button data-page="search" class="nav-item active">Search</button><button data-page="results" class="nav-item">Results</button><button data-page="mycars" class="nav-item">My Cars</button><button data-page="sold" class="nav-item">Sold</button><button data-page="unsuitable" class="nav-item">Unsuitable</button><button data-page="settings" class="nav-item">Settings</button></nav>
 <main>
 <section id="page-search" class="page active">
@@ -10,32 +10,6 @@
 <div id="presetSearchRunning" class="preset-search-running hidden"><span class="search-spinner" aria-hidden="true"></span><strong>Searching…</strong><span id="presetSearchRunningName"></span></div>
 <div id="presetList" class="preset-list"></div>
 <div id="presetEmpty" class="empty-state"><h3>No saved Searches yet</h3></div>
-</div>
-<div id="newSearchPanel" class="panel compact-panel">
-<div class="panel-title-row"><div><h2>New / One-off Search</h2><div id="newSearchReady" class="saved-indicator hidden">New search ready</div></div></div>
-<div class="compact-search-grid">
-<label>Search name <span class="muted">(optional)</span><input id="searchName" placeholder="Leave blank for one-off search"></label>
-<div class="manufacturer-field">
-<label>Manufacturers</label>
-<div class="manufacturer-controls">
-<details class="multi-picker"><summary id="manufacturerSummary">Choose manufacturers</summary><div id="manufacturerList" class="multi-options"></div></details>
-<button id="modelsButton" class="secondary" type="button" disabled>Models</button>
-</div>
-<input id="manufacturerModelsSummary" class="model-summary" readonly placeholder="Select manufacturers">
-</div>
-<div class="location-pair"><label>Postcode<input id="searchPostcode"></label><label>Radius (miles)<input id="searchRadius" type="number" placeholder="Nationwide"></label></div>
-<div class="colour-field"><label>Colours</label><details class="multi-picker"><summary id="searchColourSummary">Any colour</summary><div id="searchColourList" class="multi-options"></div></details></div>
-<label>Fuel<select id="searchFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
-<label>Body<select id="searchBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label>
-<label>Gearbox<select id="searchGearbox"><option value="">Any</option><option>Automatic</option><option>Manual</option></select></label>
-<label>Min price<input id="searchMinPrice" type="number" step="500"></label>
-<label>Max price<input id="searchMaxPrice" type="number" step="500"></label>
-<label>Max mileage<input id="searchMileage" type="number" step="1000"></label>
-<label>Min year<input id="searchYear" type="number"></label>
-<label>Min seats<input id="searchSeats" type="number"></label>
-<label>Min power<input id="searchPower" type="number" step="5"></label>
-</div>
-<div class="form-actions"><button id="startSearchButton" class="primary" type="button">Search Now</button><button id="saveSearchButton" class="secondary" type="button">Save Search</button></div>
 </div>
 <div id="searchRunning" class="search-running hidden"><span class="search-spinner" aria-hidden="true"></span><strong>Searching…</strong><span id="searchRunningDetail">Starting search…</span></div>
 <div id="searchStatus" class="notice hidden"></div>
@@ -78,6 +52,36 @@
 </form>
 </section>
 </main></div>
+
+<dialog id="newSearchDialog"><div id="newSearchPanel" class="dialog-card">
+
+<div class="dialog-heading"><div><h2>New / One-off Search</h2><p class="muted">Starts from your Settings defaults. Leave Search name blank for a one-off search.</p></div><button id="closeNewSearchDialog" type="button" class="icon-button">×</button></div>
+<div class="compact-search-grid">
+<label>Search name <span class="muted">(optional)</span><input id="searchName" placeholder="Leave blank for one-off search"></label>
+<div class="manufacturer-field">
+<label>Manufacturers</label>
+<div class="manufacturer-controls">
+<details class="multi-picker"><summary id="manufacturerSummary">Choose manufacturers</summary><div id="manufacturerList" class="multi-options"></div></details>
+<button id="modelsButton" class="secondary" type="button" disabled>Models</button>
+</div>
+<input id="manufacturerModelsSummary" class="model-summary" readonly placeholder="Select manufacturers">
+</div>
+<div class="location-pair"><label>Postcode<input id="searchPostcode"></label><label>Radius (miles)<input id="searchRadius" type="number" placeholder="Nationwide"></label></div>
+<div class="colour-field"><label>Colours</label><details class="multi-picker"><summary id="searchColourSummary">Any colour</summary><div id="searchColourList" class="multi-options"></div></details></div>
+<label>Fuel<select id="searchFuel"><option value="">Any</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
+<label>Body<select id="searchBody"><option value="">Any</option><option>Hatchback</option><option>Estate</option><option>Saloon</option><option>SUV</option><option>MPV</option></select></label>
+<label>Gearbox<select id="searchGearbox"><option value="">Any</option><option>Automatic</option><option>Manual</option></select></label>
+<label>Min price<input id="searchMinPrice" type="number" step="500"></label>
+<label>Max price<input id="searchMaxPrice" type="number" step="500"></label>
+<label>Max mileage<input id="searchMileage" type="number" step="1000"></label>
+<label>Min year<input id="searchYear" type="number"></label>
+<label>Min seats<input id="searchSeats" type="number"></label>
+<label>Min power<input id="searchPower" type="number" step="5"></label>
+</div>
+<div class="form-actions"><button id="cancelNewSearchButton" class="secondary" type="button">Cancel</button><button id="startSearchButton" class="primary" type="button">Search Now</button><button id="saveSearchButton" class="secondary" type="button">Save Search</button></div>
+
+
+</div></dialog>
 
 <dialog id="presetDialog"><form id="presetForm" method="dialog" class="dialog-card">
 <div class="dialog-heading"><h2 id="presetDialogTitle">Search</h2><button id="closePresetDialog" type="button" class="icon-button">×</button></div>

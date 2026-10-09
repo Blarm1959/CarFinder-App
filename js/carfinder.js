@@ -97,18 +97,15 @@ async function newSearch(first=false){
   $("searchName").value="";
   applySearch(await api("/search/base"));
   $("searchStatus").classList.add("hidden");
-  $("newSearchReady").classList.add("hidden");
   if(!first){
     page("search");
-    requestAnimationFrame(()=>{
-      $("newSearchPanel").scrollIntoView({behavior:"smooth",block:"start"});
-      $("newSearchReady").classList.remove("hidden");
-      setTimeout(()=>$("newSearchReady").classList.add("hidden"),2200);
-      $("searchName").focus({preventScroll:true});
-    });
+    $("newSearchDialog").showModal();
+    requestAnimationFrame(()=>$("searchName").focus());
   }
 }
 $("newSearchButton").onclick=()=>newSearch(false);
+$("closeNewSearchDialog").onclick=()=>$("newSearchDialog").close();
+$("cancelNewSearchButton").onclick=()=>$("newSearchDialog").close();
 function searchPayload(){return{manufacturer_models:formatManufacturerModels(searchModels),postcode:$("searchPostcode").value,fuel:$("searchFuel").value||null,body_type:$("searchBody").value||null,transmission:$("searchGearbox").value||null,colours:selectedColours("searchColourList"),min_price:num($("searchMinPrice").value),max_price:num($("searchMaxPrice").value),max_mileage:num($("searchMileage").value),min_year:num($("searchYear").value),seats:num($("searchSeats").value),min_power_bhp:num($("searchPower").value),radius_miles:num($("searchRadius").value)}}
 function setSearchBusy(busy,savedSearchName=""){
   searchInProgress=busy;
@@ -158,7 +155,10 @@ async function runAsyncSearch(payload,savedSearchName=""){
     const r=await waitForSearchJob(started.job_id,savedSearchName,startedAt);
     box.textContent=r.message+(r.failures?.length?` Problems: ${r.failures.join(" | ")}`:"");
     await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);
-    if(r.status==="complete")page("results");else box.classList.remove("hidden");
+    if(r.status==="complete"){
+      if($("newSearchDialog").open)$("newSearchDialog").close();
+      page("results");
+    }else box.classList.remove("hidden");
   }catch(e){
     box.textContent=e.message;
     box.classList.remove("hidden");
@@ -176,6 +176,7 @@ $("saveSearchButton").onclick=async()=>{
     const q=searchPayload();
     await api(`/search-presets/${created.id}`,{method:"PUT",body:JSON.stringify({name,manufacturer_models:q.manufacturer_models,postcode:q.postcode,fuel:q.fuel,body_type:q.body_type,transmission:q.transmission,colours:q.colours,min_price:q.min_price,max_price:q.max_price,max_mileage:q.max_mileage,min_year:q.min_year,min_seats:q.seats,min_power_bhp:q.min_power_bhp,radius_miles:q.radius_miles})});
     await loadPresets();
+    if($("newSearchDialog").open)$("newSearchDialog").close();
   }catch(e){alert(e.message)}
 };
 
