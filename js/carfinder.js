@@ -114,7 +114,8 @@ function setSearchBusy(busy,savedSearchName=""){
   searchInProgress=busy;
   $("searchRunning").classList.toggle("hidden",!busy);
   $("presetSearchRunning").classList.toggle("hidden",!busy);
-  $("presetSearchRunningName").textContent=busy?(savedSearchName?`Running ${savedSearchName}`:"Running search"):"";
+  $("searchRunningDetail").textContent=busy?"Starting search…":"";
+  $("presetSearchRunningName").textContent=busy?(savedSearchName?`Running ${savedSearchName} · starting…`:"Starting search…"):"";
   const ids=["startSearchButton","saveSearchButton","newSearchButton","modelsButton","searchName","searchPostcode","searchRadius","searchFuel","searchBody","searchGearbox","searchMinPrice","searchMaxPrice","searchMileage","searchYear","searchSeats","searchPower"];
   ids.forEach(id=>{const el=$(id);if(el)el.disabled=busy});
   document.querySelectorAll("#page-search input,#page-search select,#page-search button,#page-search details,#presetList button").forEach(el=>{
@@ -124,17 +125,40 @@ function setSearchBusy(busy,savedSearchName=""){
   $("presetList").classList.toggle("search-list-busy",busy);
   $("startSearchButton").textContent=busy?"Searching…":"Search Now";
 }
-async function runCurrentSearch(){
+function progressText(job,startedAt){
+  const elapsed=Math.max(0,Math.floor((Date.now()-startedAt)/1000));
+  if(job.phase==="saving")return `${job.total}/${job.total} · Saving results · ${elapsed}s elapsed`;
+  if(job.current>0)return `${job.current}/${job.total} · ${job.label||"Searching"} · ${elapsed}s elapsed`;
+  return `0/${job.total||"?"} · Starting · ${elapsed}s elapsed`;
+}
+async function waitForSearchJob(jobId,savedSearchName,startedAt){
+  while(true){
+    const job=await api(`/search/status/${jobId}`);
+    const detail=progressText(job,startedAt);
+    $("searchRunningDetail").textContent=detail;
+    $("presetSearchRunningName").textContent=savedSearchName?`Running ${savedSearchName} · ${detail}`:detail;
+    if(job.done){
+      if(job.error)throw Error(job.error);
+      return job.result;
+    }
+    await new Promise(resolve=>setTimeout(resolve,900));
+  }
+}
+async function runAsyncSearch(payload,savedSearchName=""){
   if(searchInProgress)return;
-  const box=$("searchStatus");
-  box.classList.add("hidden");
-  setSearchBusy(true);
+  const box=$("searchStatus");box.classList.add("hidden");setSearchBusy(true,savedSearchName);
+  const startedAt=Date.now();
   try{
-    const r=await api("/search/start",{method:"POST",body:JSON.stringify(searchPayload())});
+    const started=await api("/search/start-async",{method:"POST",body:JSON.stringify(payload)});
+    if(started.status!=="started"){
+      box.textContent=started.message||"Search could not be started.";
+      box.classList.remove("hidden");
+      return;
+    }
+    const r=await waitForSearchJob(started.job_id,savedSearchName,startedAt);
     box.textContent=r.message+(r.failures?.length?` Problems: ${r.failures.join(" | ")}`:"");
     await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);
-    if(r.status==="complete")page("results");
-    else box.classList.remove("hidden");
+    if(r.status==="complete")page("results");else box.classList.remove("hidden");
   }catch(e){
     box.textContent=e.message;
     box.classList.remove("hidden");
@@ -142,6 +166,7 @@ async function runCurrentSearch(){
     setSearchBusy(false);
   }
 }
+async function runCurrentSearch(){await runAsyncSearch(searchPayload())}
 $("startSearchButton").onclick=runCurrentSearch;
 $("saveSearchButton").onclick=async()=>{
   const name=$("searchName").value.trim();
@@ -156,17 +181,9 @@ $("saveSearchButton").onclick=async()=>{
 
 function openPreset(p){$("presetId").value=p.id;$("presetDialogTitle").textContent="Edit Search";val("presetName",p.name);loadMakerEditor("preset",p.manufacturer_models||"");renderColours("presetColourList","presetColourSummary",p.colours||[]);for(const [id,k] of [["presetPostcode","postcode"],["presetFuel","fuel"],["presetBody","body_type"],["presetGearbox","transmission"],["presetMinPrice","min_price"],["presetMaxPrice","max_price"],["presetMaxMileage","max_mileage"],["presetMinYear","min_year"],["presetSeats","min_seats"],["presetPower","min_power_bhp"],["presetRadius","radius_miles"]])val(id,p[k]);$("presetDialog").showModal()}
 window.searchPresetNow=async id=>{
-  if(searchInProgress)return;
   const p=presets.find(x=>x.id===id);if(!p)return;
   const payload={manufacturer_models:p.manufacturer_models||"",postcode:p.postcode||"",fuel:p.fuel||null,body_type:p.body_type||null,transmission:p.transmission||null,colours:p.colours||[],min_price:p.min_price,max_price:p.max_price,max_mileage:p.max_mileage,min_year:p.min_year,seats:p.min_seats,min_power_bhp:p.min_power_bhp,radius_miles:p.radius_miles};
-  const box=$("searchStatus");box.classList.add("hidden");setSearchBusy(true,p.name);
-  try{
-    const r=await api("/search/start",{method:"POST",body:JSON.stringify(payload)});
-    box.textContent=r.message+(r.failures?.length?` Problems: ${r.failures.join(" | ")}`:"");
-    await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);
-    if(r.status==="complete")page("results");else box.classList.remove("hidden");
-  }catch(e){box.textContent=e.message;box.classList.remove("hidden")}
-  finally{setSearchBusy(false)}
+  await runAsyncSearch(payload,p.name);
 };
 window.editPreset=id=>openPreset(presets.find(p=>p.id===id));
 window.deletePreset=async id=>{if(confirm("Delete this Search?")){await api(`/search-presets/${id}`,{method:"DELETE"});await loadPresets()}};

@@ -62,3 +62,6 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 /* v5.5.4 New Search feedback */
 #newSearchPanel{scroll-margin-top:150px}
 #newSearchReady{margin-top:4px}
+
+/* v5.5.5 live search progress */
+#searchRunningDetail,#presetSearchRunningName{font-variant-numeric:tabular-nums}
