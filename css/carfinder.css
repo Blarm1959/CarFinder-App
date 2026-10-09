@@ -38,3 +38,14 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 .location-pair label,.colour-field>label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800}
 .colour-field{grid-column:span 2}
 @media(max-width:600px){.location-pair{grid-template-columns:1fr;grid-column:auto}.colour-field{grid-column:auto}}
+
+/* v5.5.2 search progress and multi-level sorting */
+.search-running{display:flex;align-items:center;gap:10px;margin:12px 0;padding:13px 15px;border:1px solid #cddcff;background:#eef4ff;border-radius:10px;color:#274b9f}
+.search-spinner{width:18px;height:18px;border:3px solid #b9c9ef;border-top-color:#2457d6;border-radius:50%;animation:cf-spin .8s linear infinite;flex:0 0 auto}
+@keyframes cf-spin{to{transform:rotate(360deg)}}
+.busy-disabled{pointer-events:none;opacity:.55}
+.multi-sort{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.sort-level{display:flex;gap:6px;align-items:end}
+.sort-level label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;min-width:130px}
+.sort-dir{min-width:68px}
+@media(max-width:760px){.multi-sort{display:grid;grid-template-columns:1fr}.sort-level label{flex:1}}

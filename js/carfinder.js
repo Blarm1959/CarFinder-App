@@ -1,4 +1,4 @@
-const API="/api/v1",$=id=>document.getElementById(id);let manufacturers=[],profiles=[],currentProfile=null,presets=[],settings={},searchModels={},presetModels={},modelEditorTarget="search",resultRows=[],resultView="unreviewed",resultSort="price",resultAsc=true;const COLOURS=["Black","Blue","Brown","Grey","Green","Orange","Red","Silver","White","Yellow","Beige","Gold","Purple"];
+const API="/api/v1",$=id=>document.getElementById(id);let manufacturers=[],profiles=[],currentProfile=null,presets=[],settings={},searchModels={},presetModels={},modelEditorTarget="search",resultRows=[],resultView="unreviewed",resultSorts=[{key:"price",asc:true},{key:"",asc:true},{key:"",asc:true}],searchInProgress=false;const COLOURS=["Black","Blue","Brown","Grey","Green","Orange","Red","Silver","White","Yellow","Beige","Gold","Purple"];
 async function api(path,options={}){const r=await fetch(API+path,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...options});let body={};try{body=await r.json()}catch{}if(r.status===401){showLogin();throw Error(body.detail||"Choose your name")}if(!r.ok)throw Error(body.detail||`Request failed (${r.status})`);return body}
 async function loadVersion(){try{const r=await fetch("/build-info.json",{cache:"no-store"});if(r.ok){const b=await r.json(),v=b.version||b.tag;if(v)$("versionButton").textContent=String(v).startsWith("v")?v:`v${v}`}}catch{}}
 function showLogin(){$("loginView").classList.remove("hidden");$("appView").classList.add("hidden")}function showApp(){$("loginView").classList.add("hidden");$("appView").classList.remove("hidden")}function page(name){document.querySelectorAll(".page").forEach(x=>x.classList.toggle("active",x.id===`page-${name}`));document.querySelectorAll(".nav-item").forEach(x=>x.classList.toggle("active",x.dataset.page===name));scrollTo(0,0)}
@@ -101,9 +101,34 @@ async function newSearch(first=false){
 }
 $("newSearchButton").onclick=()=>newSearch(false);
 function searchPayload(){return{manufacturer_models:formatManufacturerModels(searchModels),postcode:$("searchPostcode").value,fuel:$("searchFuel").value||null,body_type:$("searchBody").value||null,transmission:$("searchGearbox").value||null,colours:selectedColours("searchColourList"),min_price:num($("searchMinPrice").value),max_price:num($("searchMaxPrice").value),max_mileage:num($("searchMileage").value),min_year:num($("searchYear").value),seats:num($("searchSeats").value),min_power_bhp:num($("searchPower").value),radius_miles:num($("searchRadius").value)}}
+function setSearchBusy(busy){
+  searchInProgress=busy;
+  $("searchRunning").classList.toggle("hidden",!busy);
+  const ids=["startSearchButton","saveSearchButton","newSearchButton","modelsButton","searchName","searchPostcode","searchRadius","searchFuel","searchBody","searchGearbox","searchMinPrice","searchMaxPrice","searchMileage","searchYear","searchSeats","searchPower"];
+  ids.forEach(id=>{const el=$(id);if(el)el.disabled=busy});
+  document.querySelectorAll("#page-search input,#page-search select,#page-search button,#page-search details,#presetList button").forEach(el=>{
+    if(el.tagName==="DETAILS")el.classList.toggle("busy-disabled",busy);
+    else el.disabled=busy;
+  });
+  $("startSearchButton").textContent=busy?"Searching…":"Search Now";
+}
 async function runCurrentSearch(){
-  const box=$("searchStatus"),btn=$("startSearchButton");box.classList.remove("hidden");box.textContent="Searching live manufacturer stock…";btn.disabled=true;
-  try{const r=await api("/search/start",{method:"POST",body:JSON.stringify(searchPayload())});box.textContent=r.message+(r.failures?.length?` Problems: ${r.failures.join(" | ")}`:"");await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);if(r.status==="complete")page("results")}catch(e){box.textContent=e.message}finally{btn.disabled=false}
+  if(searchInProgress)return;
+  const box=$("searchStatus");
+  box.classList.add("hidden");
+  setSearchBusy(true);
+  try{
+    const r=await api("/search/start",{method:"POST",body:JSON.stringify(searchPayload())});
+    box.textContent=r.message+(r.failures?.length?` Problems: ${r.failures.join(" | ")}`:"");
+    await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);
+    if(r.status==="complete")page("results");
+    else box.classList.remove("hidden");
+  }catch(e){
+    box.textContent=e.message;
+    box.classList.remove("hidden");
+  }finally{
+    setSearchBusy(false);
+  }
 }
 $("startSearchButton").onclick=runCurrentSearch;
 $("saveSearchButton").onclick=async()=>{
@@ -119,9 +144,17 @@ $("saveSearchButton").onclick=async()=>{
 
 function openPreset(p){$("presetId").value=p.id;$("presetDialogTitle").textContent="Edit Search";val("presetName",p.name);loadMakerEditor("preset",p.manufacturer_models||"");renderColours("presetColourList","presetColourSummary",p.colours||[]);for(const [id,k] of [["presetPostcode","postcode"],["presetFuel","fuel"],["presetBody","body_type"],["presetGearbox","transmission"],["presetMinPrice","min_price"],["presetMaxPrice","max_price"],["presetMaxMileage","max_mileage"],["presetMinYear","min_year"],["presetSeats","min_seats"],["presetPower","min_power_bhp"],["presetRadius","radius_miles"]])val(id,p[k]);$("presetDialog").showModal()}
 window.searchPresetNow=async id=>{
+  if(searchInProgress)return;
   const p=presets.find(x=>x.id===id);if(!p)return;
   const payload={manufacturer_models:p.manufacturer_models||"",postcode:p.postcode||"",fuel:p.fuel||null,body_type:p.body_type||null,transmission:p.transmission||null,colours:p.colours||[],min_price:p.min_price,max_price:p.max_price,max_mileage:p.max_mileage,min_year:p.min_year,seats:p.min_seats,min_power_bhp:p.min_power_bhp,radius_miles:p.radius_miles};
-  try{const r=await api("/search/start",{method:"POST",body:JSON.stringify(payload)});await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);if(r.status==="complete")page("results")}catch(e){alert(e.message)}
+  const box=$("searchStatus");box.classList.add("hidden");setSearchBusy(true);
+  try{
+    const r=await api("/search/start",{method:"POST",body:JSON.stringify(payload)});
+    box.textContent=r.message+(r.failures?.length?` Problems: ${r.failures.join(" | ")}`:"");
+    await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);
+    if(r.status==="complete")page("results");else box.classList.remove("hidden");
+  }catch(e){box.textContent=e.message;box.classList.remove("hidden")}
+  finally{setSearchBusy(false)}
 };
 window.editPreset=id=>openPreset(presets.find(p=>p.id===id));
 window.deletePreset=async id=>{if(confirm("Delete this Search?")){await api(`/search-presets/${id}`,{method:"DELETE"});await loadPresets()}};
@@ -129,19 +162,59 @@ $("closePresetDialog").onclick=()=>$("presetDialog").close();$("cancelPresetButt
 $("presetForm").onsubmit=async e=>{e.preventDefault();const id=+$("presetId").value;const payload={name:$("presetName").value,manufacturer_models:formatManufacturerModels(presetModels),postcode:$("presetPostcode").value,fuel:$("presetFuel").value||null,body_type:$("presetBody").value||null,transmission:$("presetGearbox").value||null,colours:selectedColours("presetColourList"),min_price:num($("presetMinPrice").value),max_price:num($("presetMaxPrice").value),max_mileage:num($("presetMaxMileage").value),min_year:num($("presetMinYear").value),min_seats:num($("presetSeats").value),min_power_bhp:num($("presetPower").value),radius_miles:num($("presetRadius").value)};await api(`/search-presets/${id}`,{method:"PUT",body:JSON.stringify(payload)});$("presetDialog").close();await loadPresets()};
 
 function priceText(v){if(v.price==null)return"Price unknown";const current=`£${Number(v.price).toLocaleString()}`;if(v.in_my_cars&&v.initial_price!=null&&Number(v.price)!==Number(v.initial_price))return `<span class="price-changed">${current}</span> <span class="old-price">(£${Number(v.initial_price).toLocaleString()})</span>`;return current}
-function facts(v){return[priceText(v),v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}
+function facts(v){return[priceText(v),v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.colour||null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}
 function resultRow(v){const state=v.sold?"sold-hit":(v.in_my_cars?"saved-hit":"");let actions="";if(v.sold)actions=`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`;else if(!v.in_my_cars)actions=`<button class="primary" onclick="addMyCar(${v.id})">Interested</button><button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>`;else actions=`<button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>`;if(v.url)actions+=`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`;return `<article class="result-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.sold?' · <span class="sold-label">SOLD</span>':(v.in_my_cars?' · <span class="saved-label">IN MY CARS</span>':"")}</div></div><div class="facts">${facts(v)}</div><div class="row-actions">${actions}</div></div></article>`}
-function sortValue(v,key){if(key==="model")return `${v.make||""} ${v.model||""}`.toLowerCase();if(key==="dealer")return String(v.dealer_name||"").toLowerCase();if(key==="distance")return v.distance_miles==null?Number.POSITIVE_INFINITY:Number(v.distance_miles);if(key==="year")return v.year==null?0:Number(v.year);if(key==="mileage")return v.mileage==null?Number.POSITIVE_INFINITY:Number(v.mileage);return v.price==null?Number.POSITIVE_INFINITY:Number(v.price)}
-function renderResults(){let a=[...resultRows];if(resultView==="unreviewed")a=a.filter(v=>!v.in_my_cars);if(resultView==="mycars")a=a.filter(v=>v.in_my_cars);a.sort((x,y)=>{const ax=sortValue(x,resultSort),ay=sortValue(y,resultSort);let c=typeof ax==="string"?ax.localeCompare(ay):ax-ay;return resultAsc?c:-c});const unreviewed=resultRows.filter(v=>!v.in_my_cars).length,my=resultRows.filter(v=>v.in_my_cars).length;$("resultCounts").textContent=`${resultRows.length} results · ${unreviewed} unreviewed · ${my} My Cars`;$("resultsEmpty").classList.toggle("hidden",!!a.length);$("resultList").innerHTML=a.map(resultRow).join("");for(const [id,view] of [["viewAll","all"],["viewUnreviewed","unreviewed"],["viewMyCars","mycars"]])$(id).className=resultView===view?"primary":"secondary"}
+function sortValue(v,key){
+  if(key==="model")return `${v.make||""} ${v.model||""}`.toLowerCase();
+  if(key==="dealer")return String(v.dealer_name||"").toLowerCase();
+  if(key==="distance")return v.distance_miles==null?Number.POSITIVE_INFINITY:Number(v.distance_miles);
+  if(key==="year")return v.year==null?0:Number(v.year);
+  if(key==="mileage")return v.mileage==null?Number.POSITIVE_INFINITY:Number(v.mileage);
+  if(key==="price")return v.price==null?Number.POSITIVE_INFINITY:Number(v.price);
+  return "";
+}
+function compareBy(x,y,key,asc){
+  const ax=sortValue(x,key),ay=sortValue(y,key);
+  let c=typeof ax==="string"?ax.localeCompare(ay):ax-ay;
+  return asc?c:-c;
+}
+function renderResults(){
+  let a=[...resultRows];
+  if(resultView==="unreviewed")a=a.filter(v=>!v.in_my_cars);
+  if(resultView==="mycars")a=a.filter(v=>v.in_my_cars);
+  a.sort((x,y)=>{
+    for(const s of resultSorts){
+      if(!s.key)continue;
+      const c=compareBy(x,y,s.key,s.asc);
+      if(c)return c;
+    }
+    return 0;
+  });
+  const unreviewed=resultRows.filter(v=>!v.in_my_cars).length,my=resultRows.filter(v=>v.in_my_cars).length;
+  $("resultCounts").textContent=`${resultRows.length} results · ${unreviewed} unreviewed · ${my} My Cars`;
+  $("resultsEmpty").classList.toggle("hidden",!!a.length);
+  $("resultList").innerHTML=a.map(resultRow).join("");
+  for(const [id,view] of [["viewAll","all"],["viewUnreviewed","unreviewed"],["viewMyCars","mycars"]])$(id).className=resultView===view?"primary":"secondary";
+}
 async function loadResults(){resultRows=(await api("/results")).results||[];renderResults()}
-$("viewAll").onclick=()=>{resultView="all";renderResults()};$("viewUnreviewed").onclick=()=>{resultView="unreviewed";renderResults()};$("viewMyCars").onclick=()=>{resultView="mycars";renderResults()};$("resultSort").onchange=e=>{resultSort=e.target.value;renderResults()};$("sortDirection").onclick=()=>{resultAsc=!resultAsc;$("sortDirection").textContent=resultAsc?"↑":"↓";renderResults()};
+$("viewAll").onclick=()=>{resultView="all";renderResults()};
+$("viewUnreviewed").onclick=()=>{resultView="unreviewed";renderResults()};
+$("viewMyCars").onclick=()=>{resultView="mycars";renderResults()};
+for(let i=1;i<=3;i++){
+  $(`resultSort${i}`).onchange=e=>{resultSorts[i-1].key=e.target.value;renderResults()};
+  $(`sortDirection${i}`).onclick=()=>{
+    resultSorts[i-1].asc=!resultSorts[i-1].asc;
+    $(`sortDirection${i}`).textContent=resultSorts[i-1].asc?"Asc":"Desc";
+    renderResults();
+  };
+}
 window.addMyCar=async id=>{await api(`/my-cars/${id}`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};window.rejectCar=async id=>{await api(`/unsuitable/${id}`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()])};window.makeAvailable=async id=>{await api(`/my-cars/${id}/available`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};window.markSold=async id=>{await api(`/my-cars/${id}/sold`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};
 
-function myCarRow(v,fromSold=false){const changed=v.initial_price!=null&&v.price!=null&&Number(v.price)!==Number(v.initial_price);const price=v.price==null?"Price unknown":changed?`<span class="price-changed">£${Number(v.price).toLocaleString()}</span> <span class="old-price">(£${Number(v.initial_price).toLocaleString()})</span>`:`£${Number(v.price).toLocaleString()}`;const state=v.sold?"sold-purple":"mycar-green";let actions=v.url?`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`:"";actions+=v.sold?`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`:`<button class="secondary" onclick="markSold(${v.id})">Sold</button>`;if(!fromSold)actions+=`<button class="danger" onclick="removeMyCar(${v.id})">Remove</button>`;return `<article class="saved-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.year?` · ${v.year}`:""} · Added by ${esc(v.added_by||"family")}${v.sold?' · SOLD':""}</div></div><div class="facts">${[price,v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}</div><div class="row-actions">${actions}</div></div>${fromSold?"":`<div class="notes-block"><textarea id="my-note-${v.id}" placeholder="Family notes">${esc(v.notes||"")}</textarea><button class="secondary" onclick="saveNote(${v.id})">Save note</button></div>`}</article>`}
+function myCarRow(v,fromSold=false){const changed=v.initial_price!=null&&v.price!=null&&Number(v.price)!==Number(v.initial_price);const price=v.price==null?"Price unknown":changed?`<span class="price-changed">£${Number(v.price).toLocaleString()}</span> <span class="old-price">(£${Number(v.initial_price).toLocaleString()})</span>`:`£${Number(v.price).toLocaleString()}`;const state=v.sold?"sold-purple":"mycar-green";let actions=v.url?`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`:"";actions+=v.sold?`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`:`<button class="secondary" onclick="markSold(${v.id})">Sold</button>`;if(!fromSold)actions+=`<button class="danger" onclick="removeMyCar(${v.id})">Remove</button>`;return `<article class="saved-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.year?` · ${v.year}`:""} · Added by ${esc(v.added_by||"family")}${v.sold?' · SOLD':""}</div></div><div class="facts">${[price,v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.colour||null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}</div><div class="row-actions">${actions}</div></div>${fromSold?"":`<div class="notes-block"><textarea id="my-note-${v.id}" placeholder="Family notes">${esc(v.notes||"")}</textarea><button class="secondary" onclick="saveNote(${v.id})">Save note</button></div>`}</article>`}
 async function loadMyCars(){const a=(await api("/my-cars")).cars||[];$("myCarsEmpty").classList.toggle("hidden",!!a.length);$("myCarsList").innerHTML=a.map(v=>myCarRow(v,false)).join("")}
 async function loadSold(){const a=(await api("/sold")).cars||[];$("soldEmpty").classList.toggle("hidden",!!a.length);$("soldList").innerHTML=a.map(v=>myCarRow(v,true)).join("")}
 window.removeMyCar=async id=>{if(confirm("Remove this car from My Cars?")){await api(`/my-cars/${id}`,{method:"DELETE"});await Promise.all([loadMyCars(),loadSold(),loadResults()])}};window.saveNote=async id=>{await api(`/my-cars/${id}/notes`,{method:"PUT",body:JSON.stringify({notes:$(`my-note-${id}`).value})})};
 
-async function loadUnsuitable(){const a=(await api("/unsuitable")).cars||[];$("unsuitableEmpty").classList.toggle("hidden",!!a.length);$("unsuitableList").innerHTML=a.map(x=>`<article class="simple-row unsuitable-red"><div class="row-main"><div><div class="car-title">${esc([x.make,x.model,x.trim].filter(Boolean).join(" ")||x.registration)}</div><div class="car-sub">${esc(x.registration)} · Marked unsuitable${x.rejected_by?` by ${esc(x.rejected_by)}`:""}</div></div><div class="facts">${[x.price!=null?`£${Number(x.price).toLocaleString()}`:null,x.mileage!=null?`${Number(x.mileage).toLocaleString()} miles`:null,x.distance_miles!=null?`${Math.round(x.distance_miles)} miles away`:null,x.dealer_name||null].filter(Boolean).map(v=>`<span>${v}</span>`).join("")}</div><div class="row-actions">${x.url?`<a class="secondary" href="${esc(x.url)}" target="_blank" rel="noopener">Advert</a>`:""}<button class="secondary" onclick="restoreUnsuitable('${esc(x.registration)}')">Allow again</button></div></div></article>`).join("")}
+async function loadUnsuitable(){const a=(await api("/unsuitable")).cars||[];$("unsuitableEmpty").classList.toggle("hidden",!!a.length);$("unsuitableList").innerHTML=a.map(x=>`<article class="simple-row unsuitable-red"><div class="row-main"><div><div class="car-title">${esc([x.make,x.model,x.trim].filter(Boolean).join(" ")||x.registration)}</div><div class="car-sub">${esc(x.registration)} · Marked unsuitable${x.rejected_by?` by ${esc(x.rejected_by)}`:""}</div></div><div class="facts">${[x.price!=null?`£${Number(x.price).toLocaleString()}`:null,x.mileage!=null?`${Number(x.mileage).toLocaleString()} miles`:null,x.colour||null,x.distance_miles!=null?`${Math.round(x.distance_miles)} miles away`:null,x.dealer_name||null].filter(Boolean).map(v=>`<span>${v}</span>`).join("")}</div><div class="row-actions">${x.url?`<a class="secondary" href="${esc(x.url)}" target="_blank" rel="noopener">Advert</a>`:""}<button class="secondary" onclick="restoreUnsuitable('${esc(x.registration)}')">Allow again</button></div></div></article>`).join("")}
 window.restoreUnsuitable=async reg=>{await api(`/unsuitable/${encodeURIComponent(reg)}`,{method:"DELETE"});await loadUnsuitable()};
 boot();
