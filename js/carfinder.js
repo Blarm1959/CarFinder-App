@@ -101,15 +101,18 @@ async function newSearch(first=false){
 }
 $("newSearchButton").onclick=()=>newSearch(false);
 function searchPayload(){return{manufacturer_models:formatManufacturerModels(searchModels),postcode:$("searchPostcode").value,fuel:$("searchFuel").value||null,body_type:$("searchBody").value||null,transmission:$("searchGearbox").value||null,colours:selectedColours("searchColourList"),min_price:num($("searchMinPrice").value),max_price:num($("searchMaxPrice").value),max_mileage:num($("searchMileage").value),min_year:num($("searchYear").value),seats:num($("searchSeats").value),min_power_bhp:num($("searchPower").value),radius_miles:num($("searchRadius").value)}}
-function setSearchBusy(busy){
+function setSearchBusy(busy,savedSearchName=""){
   searchInProgress=busy;
   $("searchRunning").classList.toggle("hidden",!busy);
+  $("presetSearchRunning").classList.toggle("hidden",!busy);
+  $("presetSearchRunningName").textContent=busy?(savedSearchName?`Running ${savedSearchName}`:"Running search"):"";
   const ids=["startSearchButton","saveSearchButton","newSearchButton","modelsButton","searchName","searchPostcode","searchRadius","searchFuel","searchBody","searchGearbox","searchMinPrice","searchMaxPrice","searchMileage","searchYear","searchSeats","searchPower"];
   ids.forEach(id=>{const el=$(id);if(el)el.disabled=busy});
   document.querySelectorAll("#page-search input,#page-search select,#page-search button,#page-search details,#presetList button").forEach(el=>{
     if(el.tagName==="DETAILS")el.classList.toggle("busy-disabled",busy);
     else el.disabled=busy;
   });
+  $("presetList").classList.toggle("search-list-busy",busy);
   $("startSearchButton").textContent=busy?"Searching…":"Search Now";
 }
 async function runCurrentSearch(){
@@ -147,7 +150,7 @@ window.searchPresetNow=async id=>{
   if(searchInProgress)return;
   const p=presets.find(x=>x.id===id);if(!p)return;
   const payload={manufacturer_models:p.manufacturer_models||"",postcode:p.postcode||"",fuel:p.fuel||null,body_type:p.body_type||null,transmission:p.transmission||null,colours:p.colours||[],min_price:p.min_price,max_price:p.max_price,max_mileage:p.max_mileage,min_year:p.min_year,seats:p.min_seats,min_power_bhp:p.min_power_bhp,radius_miles:p.radius_miles};
-  const box=$("searchStatus");box.classList.add("hidden");setSearchBusy(true);
+  const box=$("searchStatus");box.classList.add("hidden");setSearchBusy(true,p.name);
   try{
     const r=await api("/search/start",{method:"POST",body:JSON.stringify(payload)});
     box.textContent=r.message+(r.failures?.length?` Problems: ${r.failures.join(" | ")}`:"");
@@ -191,7 +194,7 @@ function renderResults(){
     return 0;
   });
   const unreviewed=resultRows.filter(v=>!v.in_my_cars).length,my=resultRows.filter(v=>v.in_my_cars).length;
-  $("resultCounts").textContent=`${resultRows.length} results · ${unreviewed} unreviewed · ${my} My Cars`;
+  $("resultCounts").innerHTML=`<span>${resultRows.length} results</span><span>${unreviewed} unreviewed</span><span>${my} My Cars</span>`;
   $("resultsEmpty").classList.toggle("hidden",!!a.length);
   $("resultList").innerHTML=a.map(resultRow).join("");
   for(const [id,view] of [["viewAll","all"],["viewUnreviewed","unreviewed"],["viewMyCars","mycars"]])$(id).className=resultView===view?"primary":"secondary";
@@ -204,7 +207,8 @@ for(let i=1;i<=3;i++){
   $(`resultSort${i}`).onchange=e=>{resultSorts[i-1].key=e.target.value;renderResults()};
   $(`sortDirection${i}`).onclick=()=>{
     resultSorts[i-1].asc=!resultSorts[i-1].asc;
-    $(`sortDirection${i}`).textContent=resultSorts[i-1].asc?"Asc":"Desc";
+    $(`sortDirection${i}`).textContent=resultSorts[i-1].asc?"↑":"↓";
+    $(`sortDirection${i}`).title=resultSorts[i-1].asc?"Ascending":"Descending";
     renderResults();
   };
 }

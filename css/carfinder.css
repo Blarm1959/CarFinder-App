@@ -49,3 +49,12 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 .sort-level label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;min-width:130px}
 .sort-dir{min-width:68px}
 @media(max-width:760px){.multi-sort{display:grid;grid-template-columns:1fr}.sort-level label{flex:1}}
+
+/* v5.5.3 compact sorting and clearer running state */
+.sort-dir{min-width:42px;width:42px;padding-left:8px;padding-right:8px;font-size:19px;line-height:1}
+.result-counts{display:flex;flex-direction:column;gap:2px;white-space:nowrap;line-height:1.35}
+.preset-search-running{display:flex;align-items:center;gap:9px;margin:0 0 12px;padding:11px 13px;border:1px solid #cddcff;background:#eef4ff;color:#274b9f;border-radius:10px}
+.search-list-busy{opacity:.62}
+.search-list-busy .preset-row{background:#f4f5f7}
+.search-list-busy button:disabled{background:#eef0f3!important;color:#8a929d!important;border-color:#d8dde4!important;opacity:1}
+@media(max-width:760px){.result-counts{margin-top:4px}}
