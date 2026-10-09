@@ -1,6 +1,6 @@
 <!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CarFinder</title><link rel="stylesheet" href="css/carfinder.css"></head><body>
 <div id="loginView" class="auth-shell"><form id="loginForm" class="auth-card"><div class="brand-mark">CF</div><h1>CarFinder</h1><p class="muted">Enter your name to continue.</p><label>Your name<input id="loginName" autocomplete="name" required autofocus></label><button class="primary large" type="submit">Continue</button><p id="loginError" class="error hidden"></p><div id="loginChoices" class="login-choices hidden"></div></form></div>
-<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.5.6</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
+<div id="appView" class="app hidden"><header class="topbar"><div><div class="eyebrow">Private family vehicle search</div><div class="brand-row"><div class="brand">CarFinder</div><button id="versionButton" class="version-button">v5.6.1</button></div></div><div class="top-actions"><label class="profile-picker">Viewing as <select id="profileSelect" class="user-chip"></select></label><button id="logoutButton" class="quiet">Sign out</button></div></header>
 <nav class="main-nav"><button data-page="search" class="nav-item active">Search</button><button data-page="results" class="nav-item">Results</button><button data-page="mycars" class="nav-item">My Cars</button><button data-page="sold" class="nav-item">Sold</button><button data-page="unsuitable" class="nav-item">Unsuitable</button><button data-page="settings" class="nav-item">Settings</button></nav>
 <main>
 <section id="page-search" class="page active">
@@ -46,7 +46,7 @@
 <label>Max mileage<input id="settingsMaxMileage" type="number" step="1000"></label>
 <label>Min year<input id="settingsMinYear" type="number"></label>
 <label>Min seats<input id="settingsSeats" type="number"></label>
-<label>Min power<input id="settingsPower" type="number" step="5"></label>
+
 </div>
 <div class="form-actions"><button class="primary" type="submit">Save Settings</button><span id="settingsSaved" class="saved-indicator"></span></div>
 </form>
@@ -56,6 +56,7 @@
 <dialog id="newSearchDialog"><div id="newSearchPanel" class="dialog-card">
 
 <div class="dialog-heading"><div><h2>New / One-off Search</h2><p class="muted">Starts from your Settings defaults. Leave Search name blank for a one-off search.</p></div><button id="closeNewSearchDialog" type="button" class="icon-button">×</button></div>
+<div id="newSearchDialogRunning" class="search-running hidden"><span class="search-spinner" aria-hidden="true"></span><strong>Searching…</strong><span id="newSearchDialogRunningDetail">Starting search…</span></div>
 <div class="compact-search-grid">
 <label>Search name <span class="muted">(optional)</span><input id="searchName" placeholder="Leave blank for one-off search"></label>
 <div class="manufacturer-field">
@@ -76,7 +77,7 @@
 <label>Max mileage<input id="searchMileage" type="number" step="1000"></label>
 <label>Min year<input id="searchYear" type="number"></label>
 <label>Min seats<input id="searchSeats" type="number"></label>
-<label>Min power<input id="searchPower" type="number" step="5"></label>
+
 </div>
 <div class="form-actions"><button id="cancelNewSearchButton" class="secondary" type="button">Cancel</button><button id="startSearchButton" class="primary" type="button">Search Now</button><button id="saveSearchButton" class="secondary" type="button">Save Search</button></div>
 
@@ -106,7 +107,7 @@
 <label>Max mileage<input id="presetMaxMileage" type="number" step="1000"></label>
 <label>Min year<input id="presetMinYear" type="number"></label>
 <label>Min seats<input id="presetSeats" type="number"></label>
-<label>Min power<input id="presetPower" type="number" step="5"></label>
+
 
 </div>
 <div class="form-actions"><button id="cancelPresetButton" type="button" class="secondary">Cancel</button><button type="submit" class="primary">Save search</button></div>

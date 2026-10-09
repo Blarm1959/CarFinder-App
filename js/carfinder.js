@@ -1,6 +1,6 @@
 const API="/api/v1",$=id=>document.getElementById(id);let manufacturers=[],profiles=[],currentProfile=null,presets=[],settings={},searchModels={},presetModels={},modelEditorTarget="search",resultRows=[],resultView="unreviewed",resultSorts=[{key:"price",asc:true},{key:"",asc:true},{key:"",asc:true}],searchInProgress=false;const COLOURS=["Black","Blue","Brown","Grey","Green","Orange","Red","Silver","White","Yellow","Beige","Gold","Purple"];
 async function api(path,options={}){const r=await fetch(API+path,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...options});let body={};try{body=await r.json()}catch{}if(r.status===401){showLogin();throw Error(body.detail||"Choose your name")}if(!r.ok)throw Error(body.detail||`Request failed (${r.status})`);return body}
-async function loadVersion(){try{const r=await fetch("/build-info.json",{cache:"no-store"});if(r.ok){const b=await r.json(),v=b.version||b.tag;if(v)$("versionButton").textContent=String(v).startsWith("v")?v:`v${v}`}}catch{}}
+async function loadVersion(){try{const b=await api("/health");const v=b.version;if(v)$("versionButton").textContent=String(v).startsWith("v")?v:`v${v}`}catch{}}
 function showLogin(){$("loginView").classList.remove("hidden");$("appView").classList.add("hidden")}function showApp(){$("loginView").classList.add("hidden");$("appView").classList.remove("hidden")}function page(name){document.querySelectorAll(".page").forEach(x=>x.classList.toggle("active",x.id===`page-${name}`));document.querySelectorAll(".nav-item").forEach(x=>x.classList.toggle("active",x.dataset.page===name));scrollTo(0,0)}
 const num=v=>v===""||v==null?null:Number(v),val=(id,v)=>$(id).value=v??"",esc=x=>String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 
@@ -13,7 +13,7 @@ async function boot(){
     await loadSettings();await loadPresets();await newSearch(true);
     await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()]);
     const my=(await api("/my-cars")).cars||[];
-    page(my.length?"mycars":"search");
+    page(my.length?"mycars":"settings");
   }catch{showLogin()}
 }
 function renderProfiles(){$("profileSelect").innerHTML=profiles.map(p=>`<option value="${p.id}" ${p.id===currentProfile.id?"selected":""}>${esc(p.name)}</option>`).join("")}
@@ -77,10 +77,10 @@ $("modelsForm").onsubmit=e=>{e.preventDefault();const map=modelEditorTarget==="p
 
 async function loadSettings(){
   settings=await api("/settings");
-  for(const [id,k] of [["settingsPostcode","postcode"],["settingsFuel","fuel"],["settingsBody","body_type"],["settingsGearbox","transmission"],["settingsMinPrice","min_price"],["settingsMaxPrice","max_price"],["settingsMaxMileage","max_mileage"],["settingsMinYear","min_year"],["settingsSeats","min_seats"],["settingsPower","min_power_bhp"],["settingsRadius","radius_miles"]])val(id,settings[k]);
+  for(const [id,k] of [["settingsPostcode","postcode"],["settingsFuel","fuel"],["settingsBody","body_type"],["settingsGearbox","transmission"],["settingsMinPrice","min_price"],["settingsMaxPrice","max_price"],["settingsMaxMileage","max_mileage"],["settingsMinYear","min_year"],["settingsSeats","min_seats"],["settingsRadius","radius_miles"]])val(id,settings[k]);
   renderColours("settingsColourList","settingsColourSummary",settings.colours||[]);
 }
-function settingsPayload(){return{postcode:$("settingsPostcode").value,fuel:$("settingsFuel").value||null,body_type:$("settingsBody").value||null,transmission:$("settingsGearbox").value||null,colours:selectedColours("settingsColourList"),min_price:num($("settingsMinPrice").value),max_price:num($("settingsMaxPrice").value),max_mileage:num($("settingsMaxMileage").value),min_year:num($("settingsMinYear").value),min_seats:num($("settingsSeats").value),min_power_bhp:num($("settingsPower").value),radius_miles:num($("settingsRadius").value)}}
+function settingsPayload(){return{postcode:$("settingsPostcode").value,fuel:$("settingsFuel").value||null,body_type:$("settingsBody").value||null,transmission:$("settingsGearbox").value||null,colours:selectedColours("settingsColourList"),min_price:num($("settingsMinPrice").value),max_price:num($("settingsMaxPrice").value),max_mileage:num($("settingsMaxMileage").value),min_year:num($("settingsMinYear").value),min_seats:num($("settingsSeats").value),radius_miles:num($("settingsRadius").value)}}
 $("settingsForm").onsubmit=async e=>{e.preventDefault();settings=await api("/settings",{method:"PUT",body:JSON.stringify(settingsPayload())});$("settingsSaved").textContent="Settings saved";setTimeout(()=>$("settingsSaved").textContent="",1500)};
 
 async function loadPresets(){
@@ -90,7 +90,7 @@ async function loadPresets(){
 }
 function applySearch(d){
   loadMakerEditor("search",d.manufacturer_models||"");
-  for(const [id,k] of [["searchPostcode","postcode"],["searchFuel","fuel"],["searchBody","body_type"],["searchGearbox","transmission"],["searchMinPrice","min_price"],["searchMaxPrice","max_price"],["searchMileage","max_mileage"],["searchYear","min_year"],["searchSeats","seats"],["searchPower","min_power_bhp"],["searchRadius","radius_miles"]])val(id,d[k]);
+  for(const [id,k] of [["searchPostcode","postcode"],["searchFuel","fuel"],["searchBody","body_type"],["searchGearbox","transmission"],["searchMinPrice","min_price"],["searchMaxPrice","max_price"],["searchMileage","max_mileage"],["searchYear","min_year"],["searchSeats","seats"],["searchRadius","radius_miles"]])val(id,d[k]);
   renderColours("searchColourList","searchColourSummary",d.colours||[]);
 }
 async function newSearch(first=false){
@@ -106,18 +106,19 @@ async function newSearch(first=false){
 $("newSearchButton").onclick=()=>newSearch(false);
 $("closeNewSearchDialog").onclick=()=>$("newSearchDialog").close();
 $("cancelNewSearchButton").onclick=()=>$("newSearchDialog").close();
-function searchPayload(){return{manufacturer_models:formatManufacturerModels(searchModels),postcode:$("searchPostcode").value,fuel:$("searchFuel").value||null,body_type:$("searchBody").value||null,transmission:$("searchGearbox").value||null,colours:selectedColours("searchColourList"),min_price:num($("searchMinPrice").value),max_price:num($("searchMaxPrice").value),max_mileage:num($("searchMileage").value),min_year:num($("searchYear").value),seats:num($("searchSeats").value),min_power_bhp:num($("searchPower").value),radius_miles:num($("searchRadius").value)}}
+function searchPayload(){return{manufacturer_models:formatManufacturerModels(searchModels),postcode:$("searchPostcode").value,fuel:$("searchFuel").value||null,body_type:$("searchBody").value||null,transmission:$("searchGearbox").value||null,colours:selectedColours("searchColourList"),min_price:num($("searchMinPrice").value),max_price:num($("searchMaxPrice").value),max_mileage:num($("searchMileage").value),min_year:num($("searchYear").value),seats:num($("searchSeats").value),radius_miles:num($("searchRadius").value)}}
 function setSearchBusy(busy,savedSearchName=""){
   searchInProgress=busy;
   $("searchRunning").classList.toggle("hidden",!busy);
   $("presetSearchRunning").classList.toggle("hidden",!busy);
+  const popupOpen=$("newSearchDialog").open;
+  $("newSearchDialogRunning").classList.toggle("hidden",!(busy&&popupOpen));
   $("searchRunningDetail").textContent=busy?"Starting search…":"";
+  $("newSearchDialogRunningDetail").textContent=busy?"Starting search…":"";
   $("presetSearchRunningName").textContent=busy?(savedSearchName?`Running ${savedSearchName} · starting…`:"Starting search…"):"";
-  const ids=["startSearchButton","saveSearchButton","newSearchButton","modelsButton","searchName","searchPostcode","searchRadius","searchFuel","searchBody","searchGearbox","searchMinPrice","searchMaxPrice","searchMileage","searchYear","searchSeats","searchPower"];
-  ids.forEach(id=>{const el=$(id);if(el)el.disabled=busy});
-  document.querySelectorAll("#page-search input,#page-search select,#page-search button,#page-search details,#presetList button").forEach(el=>{
+  document.querySelectorAll("#page-search input,#page-search select,#page-search button,#page-search details,#newSearchDialog input,#newSearchDialog select,#newSearchDialog button,#newSearchDialog details,#presetList button").forEach(el=>{
     if(el.tagName==="DETAILS")el.classList.toggle("busy-disabled",busy);
-    else el.disabled=busy;
+    else if(el.id!=="closeNewSearchDialog")el.disabled=busy;
   });
   $("presetList").classList.toggle("search-list-busy",busy);
   $("startSearchButton").textContent=busy?"Searching…":"Search Now";
@@ -133,6 +134,7 @@ async function waitForSearchJob(jobId,savedSearchName,startedAt){
     const job=await api(`/search/status/${jobId}`);
     const detail=progressText(job,startedAt);
     $("searchRunningDetail").textContent=detail;
+    $("newSearchDialogRunningDetail").textContent=detail;
     $("presetSearchRunningName").textContent=savedSearchName?`Running ${savedSearchName} · ${detail}`:detail;
     if(job.done){
       if(job.error)throw Error(job.error);
@@ -172,24 +174,27 @@ $("saveSearchButton").onclick=async()=>{
   const name=$("searchName").value.trim();
   if(!name){alert("Enter a Search name to save it.");return}
   try{
-    const created=await api("/search-presets",{method:"POST",body:JSON.stringify({name})});
     const q=searchPayload();
-    await api(`/search-presets/${created.id}`,{method:"PUT",body:JSON.stringify({name,manufacturer_models:q.manufacturer_models,postcode:q.postcode,fuel:q.fuel,body_type:q.body_type,transmission:q.transmission,colours:q.colours,min_price:q.min_price,max_price:q.max_price,max_mileage:q.max_mileage,min_year:q.min_year,min_seats:q.seats,min_power_bhp:q.min_power_bhp,radius_miles:q.radius_miles})});
+    await api("/search-presets",{method:"POST",body:JSON.stringify({
+      name,manufacturer_models:q.manufacturer_models,postcode:q.postcode,fuel:q.fuel,body_type:q.body_type,
+      transmission:q.transmission,colours:q.colours,min_price:q.min_price,max_price:q.max_price,
+      max_mileage:q.max_mileage,min_year:q.min_year,min_seats:q.seats,radius_miles:q.radius_miles
+    })});
     await loadPresets();
     if($("newSearchDialog").open)$("newSearchDialog").close();
   }catch(e){alert(e.message)}
 };
 
-function openPreset(p){$("presetId").value=p.id;$("presetDialogTitle").textContent="Edit Search";val("presetName",p.name);loadMakerEditor("preset",p.manufacturer_models||"");renderColours("presetColourList","presetColourSummary",p.colours||[]);for(const [id,k] of [["presetPostcode","postcode"],["presetFuel","fuel"],["presetBody","body_type"],["presetGearbox","transmission"],["presetMinPrice","min_price"],["presetMaxPrice","max_price"],["presetMaxMileage","max_mileage"],["presetMinYear","min_year"],["presetSeats","min_seats"],["presetPower","min_power_bhp"],["presetRadius","radius_miles"]])val(id,p[k]);$("presetDialog").showModal()}
+function openPreset(p){$("presetId").value=p.id;$("presetDialogTitle").textContent="Edit Search";val("presetName",p.name);loadMakerEditor("preset",p.manufacturer_models||"");renderColours("presetColourList","presetColourSummary",p.colours||[]);for(const [id,k] of [["presetPostcode","postcode"],["presetFuel","fuel"],["presetBody","body_type"],["presetGearbox","transmission"],["presetMinPrice","min_price"],["presetMaxPrice","max_price"],["presetMaxMileage","max_mileage"],["presetMinYear","min_year"],["presetSeats","min_seats"],["presetRadius","radius_miles"]])val(id,p[k]);$("presetDialog").showModal()}
 window.searchPresetNow=async id=>{
   const p=presets.find(x=>x.id===id);if(!p)return;
-  const payload={manufacturer_models:p.manufacturer_models||"",postcode:p.postcode||"",fuel:p.fuel||null,body_type:p.body_type||null,transmission:p.transmission||null,colours:p.colours||[],min_price:p.min_price,max_price:p.max_price,max_mileage:p.max_mileage,min_year:p.min_year,seats:p.min_seats,min_power_bhp:p.min_power_bhp,radius_miles:p.radius_miles};
+  const payload={manufacturer_models:p.manufacturer_models||"",postcode:p.postcode||"",fuel:p.fuel||null,body_type:p.body_type||null,transmission:p.transmission||null,colours:p.colours||[],min_price:p.min_price,max_price:p.max_price,max_mileage:p.max_mileage,min_year:p.min_year,seats:p.min_seats,radius_miles:p.radius_miles};
   await runAsyncSearch(payload,p.name);
 };
 window.editPreset=id=>openPreset(presets.find(p=>p.id===id));
 window.deletePreset=async id=>{if(confirm("Delete this Search?")){await api(`/search-presets/${id}`,{method:"DELETE"});await loadPresets()}};
 $("closePresetDialog").onclick=()=>$("presetDialog").close();$("cancelPresetButton").onclick=()=>$("presetDialog").close();
-$("presetForm").onsubmit=async e=>{e.preventDefault();const id=+$("presetId").value;const payload={name:$("presetName").value,manufacturer_models:formatManufacturerModels(presetModels),postcode:$("presetPostcode").value,fuel:$("presetFuel").value||null,body_type:$("presetBody").value||null,transmission:$("presetGearbox").value||null,colours:selectedColours("presetColourList"),min_price:num($("presetMinPrice").value),max_price:num($("presetMaxPrice").value),max_mileage:num($("presetMaxMileage").value),min_year:num($("presetMinYear").value),min_seats:num($("presetSeats").value),min_power_bhp:num($("presetPower").value),radius_miles:num($("presetRadius").value)};await api(`/search-presets/${id}`,{method:"PUT",body:JSON.stringify(payload)});$("presetDialog").close();await loadPresets()};
+$("presetForm").onsubmit=async e=>{e.preventDefault();const id=+$("presetId").value;const payload={name:$("presetName").value,manufacturer_models:formatManufacturerModels(presetModels),postcode:$("presetPostcode").value,fuel:$("presetFuel").value||null,body_type:$("presetBody").value||null,transmission:$("presetGearbox").value||null,colours:selectedColours("presetColourList"),min_price:num($("presetMinPrice").value),max_price:num($("presetMaxPrice").value),max_mileage:num($("presetMaxMileage").value),min_year:num($("presetMinYear").value),min_seats:num($("presetSeats").value),radius_miles:num($("presetRadius").value)};await api(`/search-presets/${id}`,{method:"PUT",body:JSON.stringify(payload)});$("presetDialog").close();await loadPresets()};
 
 function priceText(v){if(v.price==null)return"Price unknown";const current=`£${Number(v.price).toLocaleString()}`;if(v.in_my_cars&&v.initial_price!=null&&Number(v.price)!==Number(v.initial_price))return `<span class="price-changed">${current}</span> <span class="old-price">(£${Number(v.initial_price).toLocaleString()})</span>`;return current}
 function facts(v){return[priceText(v),v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.colour||null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}

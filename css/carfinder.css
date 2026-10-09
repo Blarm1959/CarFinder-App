@@ -71,3 +71,7 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 #newSearchDialog .dialog-card{padding:22px}
 #newSearchDialog::backdrop{background:rgba(24,32,42,.38);backdrop-filter:blur(2px)}
 #newSearchDialog .compact-search-grid{margin-top:8px}
+
+/* v5.6.1 stable-release polish */
+#newSearchDialogRunning{margin:0 0 14px}
+#newSearchDialog button:disabled,#newSearchDialog input:disabled,#newSearchDialog select:disabled{opacity:.55;cursor:not-allowed}
