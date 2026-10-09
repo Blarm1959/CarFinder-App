@@ -32,3 +32,9 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 .sold-purple,.result-row.sold-hit{background:#f2eafb}
 .sold-label{font-weight:800;color:#6b3fa0}
 @media(max-width:760px){.results-controls{grid-template-columns:1fr}.result-sort{align-items:end}}
+
+/* v5.5.1 Search/Settings rationalisation */
+.location-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;grid-column:span 2}
+.location-pair label,.colour-field>label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800}
+.colour-field{grid-column:span 2}
+@media(max-width:600px){.location-pair{grid-template-columns:1fr;grid-column:auto}.colour-field{grid-column:auto}}
