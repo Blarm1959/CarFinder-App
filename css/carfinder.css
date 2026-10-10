@@ -75,3 +75,15 @@ dialog{border:0;border-radius:18px;padding:0;width:min(920px,calc(100% - 28px));
 /* v5.6.1 stable-release polish */
 #newSearchDialogRunning{margin:0 0 14px}
 #newSearchDialog button:disabled,#newSearchDialog input:disabled,#newSearchDialog select:disabled{opacity:.55;cursor:not-allowed}
+
+/* Local stored-information Filter, v6.0.2. */
+.vehicle-filter>label{display:block;font-size:12px;font-weight:800;margin-bottom:6px}
+.filter-entry{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.filter-help,.filter-status{font-size:12px;margin:7px 0 0;line-height:1.4}
+.filter-status:empty{display:none}
+.filter-match{font-size:12px;color:var(--muted);margin-top:8px;overflow-wrap:anywhere}
+@media(max-width:600px){.filter-entry{grid-template-columns:1fr 1fr}.filter-entry input{grid-column:1/-1}}
+
+/* Only one picker opens at a time; keep Colour choices inside the dialog. */
+.multi-options{max-width:calc(100vw - 76px)}
+.colour-field .multi-options{left:auto;right:0}

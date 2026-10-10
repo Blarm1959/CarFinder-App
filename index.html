@@ -26,9 +26,25 @@
 </div>
 <div id="resultCounts" class="result-counts muted"></div>
 </div>
+<form id="resultsFilterForm" class="vehicle-filter panel compact-panel">
+<label for="resultsFilterWord">Filter stored information</label>
+<div class="filter-entry"><input id="resultsFilterWord" type="search" maxlength="120" placeholder="Word or phrase, e.g. ACC, heated seats, camera" aria-describedby="resultsFilterHelp"><button id="resultsFilterApply" class="primary" type="submit">Filter</button><button id="resultsFilterClear" class="secondary" type="button">Clear</button></div>
+<p id="resultsFilterHelp" class="muted filter-help">Checks information saved by your searches. ACC also matches adaptive cruise control.</p>
+<p id="resultsFilterStatus" class="filter-status muted" role="status" aria-live="polite"></p>
+</form>
 <div id="resultList" class="result-list"></div><div id="resultsEmpty" class="empty-state"><h2>No results in this view</h2><p>Run a Search or choose another view.</p></div></section>
-<section id="page-mycars" class="page"><div class="compact-heading"><div><div class="eyebrow">My Cars</div><h1>Saved cars</h1><p class="muted">Green cars are available. Purple cars have been marked Sold.</p></div></div><div id="myCarsList" class="saved-list"></div><div id="myCarsEmpty" class="empty-state"><h2>No cars saved yet</h2><p>Choose Interested on a result.</p></div></section>
-<section id="page-sold" class="page"><div class="compact-heading"><div><div class="eyebrow">Sold</div><h1>Sold cars</h1><p class="muted">Cars you have marked Sold. Use Available if one comes back onto the market.</p></div></div><div id="soldList" class="saved-list"></div><div id="soldEmpty" class="empty-state"><h2>No sold cars</h2></div></section>
+<section id="page-mycars" class="page"><div class="compact-heading"><div><div class="eyebrow">My Cars</div><h1>Saved cars</h1><p class="muted">Green cars are available. Purple cars have been marked Sold.</p></div></div><form id="mycarsFilterForm" class="vehicle-filter panel compact-panel">
+<label for="mycarsFilterWord">Filter stored information</label>
+<div class="filter-entry"><input id="mycarsFilterWord" type="search" maxlength="120" placeholder="Word or phrase, e.g. ACC, heated seats, camera" aria-describedby="mycarsFilterHelp"><button id="mycarsFilterApply" class="primary" type="submit">Filter</button><button id="mycarsFilterClear" class="secondary" type="button">Clear</button></div>
+<p id="mycarsFilterHelp" class="muted filter-help">Checks information saved by your searches. ACC also matches adaptive cruise control.</p>
+<p id="mycarsFilterStatus" class="filter-status muted" role="status" aria-live="polite"></p>
+</form><div id="myCarsList" class="saved-list"></div><div id="myCarsEmpty" class="empty-state"><h2>No cars saved yet</h2><p>Choose Interested on a result.</p></div></section>
+<section id="page-sold" class="page"><div class="compact-heading"><div><div class="eyebrow">Sold</div><h1>Sold cars</h1><p class="muted">Cars you have marked Sold. Use Available if one comes back onto the market.</p></div></div><form id="soldFilterForm" class="vehicle-filter panel compact-panel">
+<label for="soldFilterWord">Filter stored information</label>
+<div class="filter-entry"><input id="soldFilterWord" type="search" maxlength="120" placeholder="Word or phrase, e.g. ACC, heated seats, camera" aria-describedby="soldFilterHelp"><button id="soldFilterApply" class="primary" type="submit">Filter</button><button id="soldFilterClear" class="secondary" type="button">Clear</button></div>
+<p id="soldFilterHelp" class="muted filter-help">Checks information saved by your searches. ACC also matches adaptive cruise control.</p>
+<p id="soldFilterStatus" class="filter-status muted" role="status" aria-live="polite"></p>
+</form><div id="soldList" class="saved-list"></div><div id="soldEmpty" class="empty-state"><h2>No sold cars</h2></div></section>
 <section id="page-unsuitable" class="page"><div class="compact-heading"><div><div class="eyebrow">Unsuitable</div><h1>Hidden cars</h1><p class="muted">These registrations will not appear in future Results.</p></div></div><div id="unsuitableList" class="simple-list"></div><div id="unsuitableEmpty" class="empty-state"><h2>No unsuitable cars</h2></div></section>
 
 <section id="page-settings" class="page">
