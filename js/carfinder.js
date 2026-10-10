@@ -1,8 +1,9 @@
 const API="/api/v1",$=id=>document.getElementById(id);let manufacturers=[],profiles=[],currentProfile=null,presets=[],settings={},searchModels={},presetModels={},modelEditorTarget="search",resultRows=[],resultView="unreviewed",resultSorts=[{key:"price",asc:true},{key:"",asc:true},{key:"",asc:true}],searchInProgress=false;const COLOURS=["Black","Blue","Brown","Grey","Green","Orange","Red","Silver","White","Yellow","Beige","Gold","Purple"];
-async function api(path,options={}){const r=await fetch(API+path,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...options});let body={};try{body=await r.json()}catch{}if(r.status===401){showLogin();throw Error(body.detail||"Choose your name")}if(!r.ok)throw Error(body.detail||`Request failed (${r.status})`);return body}
+async function api(path,options={}){const r=await fetch(API+path,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...options});let body={};try{body=await r.json()}catch{}const detail=Array.isArray(body.detail)?body.detail.map(x=>x.msg||String(x)).join("; "):body.detail;if(r.status===401){showLogin();throw Error(detail||"Choose your name")}if(!r.ok)throw Error(detail||`Request failed (${r.status})`);return body}
 async function loadVersion(){try{const b=await api("/health");const v=b.version;if(v)$("versionButton").textContent=String(v).startsWith("v")?v:`v${v}`}catch{}}
 function showLogin(){$("loginView").classList.remove("hidden");$("appView").classList.add("hidden")}function showApp(){$("loginView").classList.add("hidden");$("appView").classList.remove("hidden")}function page(name){document.querySelectorAll(".page").forEach(x=>x.classList.toggle("active",x.id===`page-${name}`));document.querySelectorAll(".nav-item").forEach(x=>x.classList.toggle("active",x.dataset.page===name));scrollTo(0,0)}
 const num=v=>v===""||v==null?null:Number(v),val=(id,v)=>$(id).value=v??"",esc=x=>String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+const safeUrl=x=>{try{const u=new URL(String(x||""));return(u.protocol==="http:"||u.protocol==="https:")?u.href:""}catch{return""}};
 
 async function boot(){
   loadVersion();
@@ -24,11 +25,13 @@ $("logoutButton").onclick=async()=>{try{await api("/auth/logout",{method:"POST"}
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>page(b.dataset.page));
 
 function parseManufacturerModels(spec){
-  const out={};
+  const out={},known=[...manufacturers].sort((a,b)=>b.length-a.length);
   String(spec||"").split(";").map(x=>x.trim()).filter(Boolean).forEach(part=>{
-    const dash=part.indexOf("-");
-    const make=(dash<0?part:part.slice(0,dash)).trim();
-    const models=(dash<0?"":part.slice(dash+1)).trim();
+    const folded=part.toLowerCase();
+    const matched=known.find(m=>folded===m.toLowerCase()||folded.startsWith(m.toLowerCase()+"-"));
+    let make="",models="";
+    if(matched){make=matched;models=folded===matched.toLowerCase()?"":part.slice(matched.length+1).trim()}
+    else{const dash=part.indexOf("-");make=(dash<0?part:part.slice(0,dash)).trim();models=(dash<0?"":part.slice(dash+1)).trim()}
     if(make)out[make]=models;
   });
   return out;
@@ -97,6 +100,7 @@ async function newSearch(first=false){
   $("searchName").value="";
   applySearch(await api("/search/base"));
   $("searchStatus").classList.add("hidden");
+  $("newSearchDialogStatus").classList.add("hidden");
   if(!first){
     page("search");
     $("newSearchDialog").showModal();
@@ -143,15 +147,23 @@ async function waitForSearchJob(jobId,savedSearchName,startedAt){
     await new Promise(resolve=>setTimeout(resolve,900));
   }
 }
+function showSearchMessage(message){
+  const box=$("searchStatus"),popup=$("newSearchDialogStatus");
+  box.textContent=message;box.classList.remove("hidden");
+  if($("newSearchDialog").open){popup.textContent=message;popup.classList.remove("hidden")}
+}
+function clearSearchMessage(){
+  $("searchStatus").classList.add("hidden");
+  $("newSearchDialogStatus").classList.add("hidden");
+}
 async function runAsyncSearch(payload,savedSearchName=""){
   if(searchInProgress)return;
-  const box=$("searchStatus");box.classList.add("hidden");setSearchBusy(true,savedSearchName);
+  const box=$("searchStatus");clearSearchMessage();setSearchBusy(true,savedSearchName);
   const startedAt=Date.now();
   try{
     const started=await api("/search/start-async",{method:"POST",body:JSON.stringify(payload)});
     if(started.status!=="started"){
-      box.textContent=started.message||"Search could not be started.";
-      box.classList.remove("hidden");
+      showSearchMessage(started.message||"Search could not be started.");
       return;
     }
     const r=await waitForSearchJob(started.job_id,savedSearchName,startedAt);
@@ -160,10 +172,9 @@ async function runAsyncSearch(payload,savedSearchName=""){
     if(r.status==="complete"){
       if($("newSearchDialog").open)$("newSearchDialog").close();
       page("results");
-    }else box.classList.remove("hidden");
+    }else showSearchMessage(box.textContent);
   }catch(e){
-    box.textContent=e.message;
-    box.classList.remove("hidden");
+    showSearchMessage(e.message);
   }finally{
     setSearchBusy(false);
   }
@@ -197,20 +208,24 @@ $("closePresetDialog").onclick=()=>$("presetDialog").close();$("cancelPresetButt
 $("presetForm").onsubmit=async e=>{e.preventDefault();const id=+$("presetId").value;const payload={name:$("presetName").value,manufacturer_models:formatManufacturerModels(presetModels),postcode:$("presetPostcode").value,fuel:$("presetFuel").value||null,body_type:$("presetBody").value||null,transmission:$("presetGearbox").value||null,colours:selectedColours("presetColourList"),min_price:num($("presetMinPrice").value),max_price:num($("presetMaxPrice").value),max_mileage:num($("presetMaxMileage").value),min_year:num($("presetMinYear").value),min_seats:num($("presetSeats").value),radius_miles:num($("presetRadius").value)};await api(`/search-presets/${id}`,{method:"PUT",body:JSON.stringify(payload)});$("presetDialog").close();await loadPresets()};
 
 function priceText(v){if(v.price==null)return"Price unknown";const current=`£${Number(v.price).toLocaleString()}`;if(v.in_my_cars&&v.initial_price!=null&&Number(v.price)!==Number(v.initial_price))return `<span class="price-changed">${current}</span> <span class="old-price">(£${Number(v.initial_price).toLocaleString()})</span>`;return current}
-function facts(v){return[priceText(v),v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.colour||null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}
-function resultRow(v){const state=v.sold?"sold-hit":(v.in_my_cars?"saved-hit":"");let actions="";if(v.sold)actions=`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`;else if(!v.in_my_cars)actions=`<button class="primary" onclick="addMyCar(${v.id})">Interested</button><button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>`;else actions=`<button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>`;if(v.url)actions+=`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`;return `<article class="result-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.sold?' · <span class="sold-label">SOLD</span>':(v.in_my_cars?' · <span class="saved-label">IN MY CARS</span>':"")}</div></div><div class="facts">${facts(v)}</div><div class="row-actions">${actions}</div></div></article>`}
+function factHtml(price,values){return `<span>${price}</span>`+values.filter(x=>x!==null&&x!==undefined&&x!=="").map(x=>`<span>${esc(x)}</span>`).join("")}
+function facts(v){return factHtml(priceText(v),[v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.colour||null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null])}
+function resultRow(v){const state=v.sold?"sold-hit":(v.in_my_cars?"saved-hit":"");let actions="";if(v.sold)actions=`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`;else if(!v.in_my_cars)actions=`<button class="primary" onclick="addMyCar(${v.id})">Interested</button><button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>`;else actions=`<button class="danger" onclick="rejectCar(${v.id})">Not Suitable</button>`;const url=safeUrl(v.url);if(url)actions+=`<a class="secondary" href="${esc(url)}" target="_blank" rel="noopener">Advert</a>`;return `<article class="result-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.sold?' · <span class="sold-label">SOLD</span>':(v.in_my_cars?' · <span class="saved-label">IN MY CARS</span>':"")}</div></div><div class="facts">${facts(v)}</div><div class="row-actions">${actions}</div></div></article>`}
 function sortValue(v,key){
-  if(key==="model")return `${v.make||""} ${v.model||""}`.toLowerCase();
-  if(key==="dealer")return String(v.dealer_name||"").toLowerCase();
-  if(key==="distance")return v.distance_miles==null?Number.POSITIVE_INFINITY:Number(v.distance_miles);
-  if(key==="year")return v.year==null?0:Number(v.year);
-  if(key==="mileage")return v.mileage==null?Number.POSITIVE_INFINITY:Number(v.mileage);
-  if(key==="price")return v.price==null?Number.POSITIVE_INFINITY:Number(v.price);
-  return "";
+  if(key==="model")return `${v.make||""} ${v.model||""}`.trim().toLowerCase()||null;
+  if(key==="dealer")return String(v.dealer_name||"").trim().toLowerCase()||null;
+  if(key==="distance")return v.distance_miles==null?null:Number(v.distance_miles);
+  if(key==="year")return v.year==null?null:Number(v.year);
+  if(key==="mileage")return v.mileage==null?null:Number(v.mileage);
+  if(key==="price")return v.price==null?null:Number(v.price);
+  return null;
 }
 function compareBy(x,y,key,asc){
   const ax=sortValue(x,key),ay=sortValue(y,key);
-  let c=typeof ax==="string"?ax.localeCompare(ay):ax-ay;
+  if(ax==null&&ay==null)return 0;
+  if(ax==null)return 1;
+  if(ay==null)return -1;
+  const c=typeof ax==="string"?ax.localeCompare(ay):ax-ay;
   return asc?c:-c;
 }
 function renderResults(){
@@ -246,11 +261,11 @@ for(let i=1;i<=3;i++){
 }
 window.addMyCar=async id=>{await api(`/my-cars/${id}`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};window.rejectCar=async id=>{await api(`/unsuitable/${id}`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold(),loadUnsuitable()])};window.makeAvailable=async id=>{await api(`/my-cars/${id}/available`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};window.markSold=async id=>{await api(`/my-cars/${id}/sold`,{method:"POST"});await Promise.all([loadResults(),loadMyCars(),loadSold()])};
 
-function myCarRow(v,fromSold=false){const changed=v.initial_price!=null&&v.price!=null&&Number(v.price)!==Number(v.initial_price);const price=v.price==null?"Price unknown":changed?`<span class="price-changed">£${Number(v.price).toLocaleString()}</span> <span class="old-price">(£${Number(v.initial_price).toLocaleString()})</span>`:`£${Number(v.price).toLocaleString()}`;const state=v.sold?"sold-purple":"mycar-green";let actions=v.url?`<a class="secondary" href="${esc(v.url)}" target="_blank" rel="noopener">Advert</a>`:"";actions+=v.sold?`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`:`<button class="secondary" onclick="markSold(${v.id})">Sold</button>`;if(!fromSold)actions+=`<button class="danger" onclick="removeMyCar(${v.id})">Remove</button>`;return `<article class="saved-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.year?` · ${v.year}`:""} · Added by ${esc(v.added_by||"family")}${v.sold?' · SOLD':""}</div></div><div class="facts">${[price,v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.colour||null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null].filter(Boolean).map(x=>`<span>${x}</span>`).join("")}</div><div class="row-actions">${actions}</div></div>${fromSold?"":`<div class="notes-block"><textarea id="my-note-${v.id}" placeholder="Family notes">${esc(v.notes||"")}</textarea><button class="secondary" onclick="saveNote(${v.id})">Save note</button></div>`}</article>`}
+function myCarRow(v,fromSold=false){const changed=v.initial_price!=null&&v.price!=null&&Number(v.price)!==Number(v.initial_price);const price=v.price==null?"Price unknown":changed?`<span class="price-changed">£${Number(v.price).toLocaleString()}</span> <span class="old-price">(£${Number(v.initial_price).toLocaleString()})</span>`:`£${Number(v.price).toLocaleString()}`;const state=v.sold?"sold-purple":"mycar-green";const url=safeUrl(v.url);let actions=url?`<a class="secondary" href="${esc(url)}" target="_blank" rel="noopener">Advert</a>`:"";actions+=v.sold?`<button class="secondary" onclick="makeAvailable(${v.id})">Available</button>`:`<button class="secondary" onclick="markSold(${v.id})">Sold</button>`;if(!fromSold)actions+=`<button class="danger" onclick="removeMyCar(${v.id})">Remove</button>`;const factBlock=factHtml(price,[v.mileage!=null?`${Number(v.mileage).toLocaleString()} miles`:null,v.colour||null,v.distance_miles!=null?`${Math.round(v.distance_miles)} miles away`:null,v.dealer_name||null]);return `<article class="saved-row ${state}"><div class="row-main"><div><div class="car-title">${esc([v.make,v.model,v.trim].filter(Boolean).join(" "))}</div><div class="car-sub">${esc(v.registration)}${v.year?` · ${esc(v.year)}`:""} · Added by ${esc(v.added_by||"family")}${v.sold?' · SOLD':""}</div></div><div class="facts">${factBlock}</div><div class="row-actions">${actions}</div></div>${fromSold?"":`<div class="notes-block"><textarea id="my-note-${v.id}" placeholder="Family notes">${esc(v.notes||"")}</textarea><button class="secondary" onclick="saveNote(${v.id})">Save note</button></div>`}</article>`}
 async function loadMyCars(){const a=(await api("/my-cars")).cars||[];$("myCarsEmpty").classList.toggle("hidden",!!a.length);$("myCarsList").innerHTML=a.map(v=>myCarRow(v,false)).join("")}
 async function loadSold(){const a=(await api("/sold")).cars||[];$("soldEmpty").classList.toggle("hidden",!!a.length);$("soldList").innerHTML=a.map(v=>myCarRow(v,true)).join("")}
 window.removeMyCar=async id=>{if(confirm("Remove this car from My Cars?")){await api(`/my-cars/${id}`,{method:"DELETE"});await Promise.all([loadMyCars(),loadSold(),loadResults()])}};window.saveNote=async id=>{await api(`/my-cars/${id}/notes`,{method:"PUT",body:JSON.stringify({notes:$(`my-note-${id}`).value})})};
 
-async function loadUnsuitable(){const a=(await api("/unsuitable")).cars||[];$("unsuitableEmpty").classList.toggle("hidden",!!a.length);$("unsuitableList").innerHTML=a.map(x=>`<article class="simple-row unsuitable-red"><div class="row-main"><div><div class="car-title">${esc([x.make,x.model,x.trim].filter(Boolean).join(" ")||x.registration)}</div><div class="car-sub">${esc(x.registration)} · Marked unsuitable${x.rejected_by?` by ${esc(x.rejected_by)}`:""}</div></div><div class="facts">${[x.price!=null?`£${Number(x.price).toLocaleString()}`:null,x.mileage!=null?`${Number(x.mileage).toLocaleString()} miles`:null,x.colour||null,x.distance_miles!=null?`${Math.round(x.distance_miles)} miles away`:null,x.dealer_name||null].filter(Boolean).map(v=>`<span>${v}</span>`).join("")}</div><div class="row-actions">${x.url?`<a class="secondary" href="${esc(x.url)}" target="_blank" rel="noopener">Advert</a>`:""}<button class="secondary" onclick="restoreUnsuitable('${esc(x.registration)}')">Allow again</button></div></div></article>`).join("")}
+async function loadUnsuitable(){const a=(await api("/unsuitable")).cars||[];$("unsuitableEmpty").classList.toggle("hidden",!!a.length);$("unsuitableList").innerHTML=a.map(x=>{const url=safeUrl(x.url),factsHtml=factHtml(x.price!=null?`£${Number(x.price).toLocaleString()}`:"Price unknown",[x.mileage!=null?`${Number(x.mileage).toLocaleString()} miles`:null,x.colour||null,x.distance_miles!=null?`${Math.round(x.distance_miles)} miles away`:null,x.dealer_name||null]);return `<article class="simple-row unsuitable-red"><div class="row-main"><div><div class="car-title">${esc([x.make,x.model,x.trim].filter(Boolean).join(" ")||x.registration)}</div><div class="car-sub">${esc(x.registration)} · Marked unsuitable${x.rejected_by?` by ${esc(x.rejected_by)}`:""}</div></div><div class="facts">${factsHtml}</div><div class="row-actions">${url?`<a class="secondary" href="${esc(url)}" target="_blank" rel="noopener">Advert</a>`:""}<button class="secondary" onclick="restoreUnsuitable('${esc(x.registration)}')">Allow again</button></div></div></article>`}).join("")}
 window.restoreUnsuitable=async reg=>{await api(`/unsuitable/${encodeURIComponent(reg)}`,{method:"DELETE"});await loadUnsuitable()};
 boot();
